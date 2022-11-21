@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * For (1), the transformation may require flattening nested fields (e.g. "k1.k2" is the flattened version of
  * {"k1": {"k2": ...}}).
  * <p></p>
- * For 2, CLP is a compressor designed to encoded unstructured log messages. It does this by decomposing a message
+ * For (2), CLP is a compressor designed to encoded unstructured log messages. It does this by decomposing a message
  * into 3 fields:
  * <ul>
  *   <li>the message's static text, called a log type;</li>
@@ -97,7 +97,7 @@ public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Obje
   }
 
   /**
-   * Initializes the root level and nested fields based on the fields requested by the caller. Nested fields are
+   * Initializes the root-level and nested fields based on the fields requested by the caller. Nested fields are
    * converted from dot notation (e.g., "k1.k2.k3") to nested objects (e.g., {k1: {k2: {k3: null}}}) so that input
    * records can be efficiently transformed to match the given fields.
    * @param fields The fields to extract from input records
@@ -193,7 +193,7 @@ public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Obje
       // 3. The field is nested (e.g. a.b.c) and we know the caller requested that at least the field's common
       //    root-level ancestor (e.g. a) must be extracted; we must recurse until we get to the leaf sub-key to see if
       //    the field indeed needs extracting.
-      // 4. The field is in no other category and it must be stored in jsonData if its set
+      // 4. The field is in no other category and it must be stored in jsonData (if it's set)
       for (Map.Entry<String, Object> recordEntry : from.entrySet()) {
         String recordKey = recordEntry.getKey();
         if (clpEncodedFieldNames.contains(recordKey)) {
@@ -311,19 +311,18 @@ public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Obje
         String recordKeyFromRoot = keyFromRoot + '.' + recordKey;
 
         Map<String, Object> childFields = (Map<String, Object>) nestedFields.get(recordKey);
+        Object recordValue = recordEntry.getValue();
         if (null == childFields) {
           // We've reached a leaf
           if (clpEncodedFieldNames.contains(recordKeyFromRoot)) {
-            encodeFieldWithClp(recordKeyFromRoot, recordEntry.getValue(), outputRow);
+            encodeFieldWithClp(recordKeyFromRoot, recordValue, outputRow);
           } else {
-            Object fromValue = recordEntry.getValue();
-            if (fromValue != null) {
-              fromValue = convert(fromValue);
+            if (recordValue != null) {
+              recordValue = convert(recordValue);
             }
-            outputRow.putValue(recordKeyFromRoot, fromValue);
+            outputRow.putValue(recordKeyFromRoot, recordValue);
           }
         } else {
-          Object recordValue = recordEntry.getValue();
           if (!(recordValue instanceof Map)) {
             LOGGER.error("Schema mismatch: Expected " + recordKeyFromRoot + " in record to be a map, but it's a "
                 + recordValue.getClass().getName());
