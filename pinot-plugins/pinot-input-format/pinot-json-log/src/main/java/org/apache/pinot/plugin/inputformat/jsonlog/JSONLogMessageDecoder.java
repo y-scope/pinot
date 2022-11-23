@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.plugin.inputformat.json;
+package org.apache.pinot.plugin.inputformat.jsonlog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Arrays;
