@@ -20,6 +20,7 @@ package org.apache.pinot.plugin.inputformat.json;
 
 import com.yscope.clp.compressorfrontend.EncodedMessage;
 import com.yscope.clp.compressorfrontend.MessageEncoder;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -251,14 +252,14 @@ public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Obje
         LOGGER.error("Can't encode value of type " + value.getClass().getName() + " with CLP.");
       } else {
         _clpEncodedMessage.clear();
-        _clpMessageEncoder.encodeMessage((String) value, _clpEncodedMessage);
-        if (_clpEncodedMessage.logtypeContainsVariablePlaceholder()) {
-          // This should be rare. If it occurs in practice, we can explore storing the field in jsonData.
-          LOGGER.error("Can't encode message containing CLP variable placeholder.");
-        } else {
+        try {
+          _clpMessageEncoder.encodeMessage((String) value, _clpEncodedMessage);
           logtype = _clpEncodedMessage.getLogTypeAsString();
           encodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
           dictVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
+        } catch (IOException e) {
+          // This should be rare. If it occurs in practice, we can explore storing the field in jsonData.
+          LOGGER.error("Can't encode message containing CLP variable placeholder.");
         }
       }
     }
