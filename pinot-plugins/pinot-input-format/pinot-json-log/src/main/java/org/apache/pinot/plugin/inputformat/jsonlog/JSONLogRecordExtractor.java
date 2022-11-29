@@ -251,7 +251,6 @@ public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Obje
       if (!(value instanceof String)) {
         LOGGER.error("Can't encode value of type " + value.getClass().getName() + " with CLP.");
       } else {
-        _clpEncodedMessage.clear();
         try {
           _clpMessageEncoder.encodeMessage((String) value, _clpEncodedMessage);
           logtype = _clpEncodedMessage.getLogTypeAsString();

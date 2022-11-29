@@ -40,8 +40,8 @@
   <dependencies>
     <dependency>
       <groupId>com.yscope.clp</groupId>
-      <artifactId>compressor-frontend-ffi</artifactId>
-      <version>0.1-SNAPSHOT</version>
+      <artifactId>clp-ffi</artifactId>
+      <version>0.1</version>
     </dependency>
 
     <dependency>
