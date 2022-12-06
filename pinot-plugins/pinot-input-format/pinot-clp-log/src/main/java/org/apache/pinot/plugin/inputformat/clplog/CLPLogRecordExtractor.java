@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.plugin.inputformat.jsonlog;
+package org.apache.pinot.plugin.inputformat.clplog;
 
 import com.yscope.clp.compressorfrontend.EncodedMessage;
 import com.yscope.clp.compressorfrontend.MessageEncoder;
@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * For (1), the transformation may require flattening nested fields (e.g. "k1.k2" is the flattened version of
  * {"k1": {"k2": ...}}).
  * <p></p>
- * For (2), CLP is a compressor designed to encoded unstructured log messages. It does this by decomposing a message
+ * For (2), CLP is a compressor designed to encode unstructured log messages. It does this by decomposing a message
  * into 3 fields:
  * <ul>
  *   <li>the message's static text, called a log type;</li>
@@ -66,14 +66,14 @@ import org.slf4j.LoggerFactory;
  * use it with ingestion transformations where the caller requests extracting all fields. As a result, we don't support
  * that use case.
  */
-public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Object>> {
-  private static final Logger LOGGER = LoggerFactory.getLogger(JSONLogRecordExtractor.class);
+public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Object>> {
+  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractor.class);
 
   private static final String LOGTYPE_COLUMN_SUFFIX = "_logtype";
   private static final String DICTIONARY_VARS_COLUMN_SUFFIX = "_dictionaryVars";
   private static final String ENCODED_VARS_COLUMN_SUFFIX = "_encodedVars";
 
-  JSONLogRecordExtractorConfig _config;
+  CLPLogRecordExtractorConfig _config;
   private Set<String> _rootLevelFields;
   private Map<String, Object> _nestedFields;
   private boolean _extractAll = false;
@@ -91,7 +91,7 @@ public class JSONLogRecordExtractor extends BaseRecordExtractor<Map<String, Obje
       _nestedFields = new HashMap<>();
       initializeFields(fields);
     }
-    _config = (JSONLogRecordExtractorConfig) recordExtractorConfig;
+    _config = (CLPLogRecordExtractorConfig) recordExtractorConfig;
 
     _clpEncodedMessage = new EncodedMessage();
     _clpMessageEncoder = new MessageEncoder();

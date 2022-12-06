@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.plugin.inputformat.jsonlog;
+package org.apache.pinot.plugin.inputformat.clplog;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -47,8 +47,8 @@ import org.slf4j.LoggerFactory;
  * Each property can be set as part of a table's indexing configuration by adding
  * `stream.kafka.decoder.prop.[configurationKeyName]` to `streamConfigs`.
  */
-public class JSONLogRecordExtractorConfig implements RecordExtractorConfig {
-  private static final Logger LOGGER = LoggerFactory.getLogger(JSONLogRecordExtractorConfig.class);
+public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
+  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractorConfig.class);
 
   private static final String FIELDS_FOR_CLP_ENCODING_CONFIG_KEY = "fieldsForClpEncoding";
   private final Set<String> _fieldsForClpEncoding = new HashSet<>();

@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.plugin.inputformat.jsonlog;
+package org.apache.pinot.plugin.inputformat.clplog;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.pinot.plugin.inputformat.jsonlog.function.CLPUDFs;
+import org.apache.pinot.plugin.inputformat.clplog.function.CLPUDFs;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.testng.annotations.Test;
 
@@ -35,7 +35,7 @@ import static org.testng.Assert.*;
 public class JSONLogRecordExtractorTest {
   @Test
   void testCLPEncoding() {
-    JSONLogMessageDecoder messageDecoder = new JSONLogMessageDecoder();
+    CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
     Map<String, String> props = new HashMap<>();
     props.put("fieldsForClpEncoding", "message");
     props.put("jsonDataField", "jsonData");
@@ -50,8 +50,8 @@ public class JSONLogRecordExtractorTest {
 
     GenericRow row = new GenericRow();
     String message = "Started job_123 on node-987 with 4 cores, 8 threads with 51.4% memory used.";
-    messageDecoder.decode(
-        ("{\"timestamp\":10,\"message\":\"" + message + "\"}").getBytes(StandardCharsets.ISO_8859_1), row);
+    messageDecoder.decode(("{\"timestamp\":10,\"message\":\"" + message + "\"}").getBytes(StandardCharsets.ISO_8859_1),
+        row);
     assertEquals(row.getValue("timestamp"), 10);
     try {
       String logtype = (String) row.getValue("message_logtype");
@@ -84,7 +84,7 @@ public class JSONLogRecordExtractorTest {
 
   @Test
   void testNestedFieldExtraction() {
-    JSONLogMessageDecoder messageDecoder = new JSONLogMessageDecoder();
+    CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
     Map<String, String> props = new HashMap<>();
     Set<String> fieldsToRead = new HashSet<>();
     fieldsToRead.add("timestamp");
@@ -96,8 +96,8 @@ public class JSONLogRecordExtractorTest {
     }
 
     GenericRow row = new GenericRow();
-    messageDecoder.decode(
-        ("{\"timestamp\":10,\"parent\":{\"child\":\"value\"}}").getBytes(StandardCharsets.ISO_8859_1), row);
+    messageDecoder.decode(("{\"timestamp\":10,\"parent\":{\"child\":\"value\"}}").getBytes(StandardCharsets.ISO_8859_1),
+        row);
     assertEquals(row.getValue("timestamp"), 10);
     // Check that the field was flattened
     assertEquals(row.getValue("parent.child"), "value");
@@ -107,7 +107,7 @@ public class JSONLogRecordExtractorTest {
 
   @Test
   void testJSONDataField() {
-    JSONLogMessageDecoder messageDecoder = new JSONLogMessageDecoder();
+    CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
     Map<String, String> props = new HashMap<>();
     props.put("jsonDataField", "jsonData");
     Set<String> fieldsToRead = new HashSet<>();
@@ -119,8 +119,8 @@ public class JSONLogRecordExtractorTest {
     }
 
     GenericRow row = new GenericRow();
-    messageDecoder.decode(
-        ("{\"timestamp\":10,\"parent\":{\"child\":\"value\"}}").getBytes(StandardCharsets.ISO_8859_1), row);
+    messageDecoder.decode(("{\"timestamp\":10,\"parent\":{\"child\":\"value\"}}").getBytes(StandardCharsets.ISO_8859_1),
+        row);
     assertEquals(row.getValue("timestamp"), 10);
     // Check that fields not part of the schema weren't added
     assertNull(row.getValue("parent.child"));

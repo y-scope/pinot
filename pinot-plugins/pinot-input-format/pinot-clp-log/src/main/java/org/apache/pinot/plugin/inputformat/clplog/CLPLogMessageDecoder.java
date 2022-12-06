@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.plugin.inputformat.jsonlog;
+package org.apache.pinot.plugin.inputformat.clplog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Arrays;
@@ -35,8 +35,8 @@ import org.slf4j.LoggerFactory;
 /**
  * An implementation of StreamMessageDecoder to read JSON log events from a stream.
  */
-public class JSONLogMessageDecoder implements StreamMessageDecoder<byte[]> {
-  private static final Logger LOGGER = LoggerFactory.getLogger(JSONLogMessageDecoder.class);
+public class CLPLogMessageDecoder implements StreamMessageDecoder<byte[]> {
+  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogMessageDecoder.class);
 
   private RecordExtractor<Map<String, Object>> _jsonRecordExtractor;
 
@@ -53,8 +53,8 @@ public class JSONLogMessageDecoder implements StreamMessageDecoder<byte[]> {
       recordExtractorConfigClass = props.get(RECORD_EXTRACTOR_CONFIG_CONFIG_KEY);
     }
     if (recordExtractorClass == null) {
-      recordExtractorClass = JSONLogRecordExtractor.class.getName();
-      recordExtractorConfigClass = JSONLogRecordExtractorConfig.class.getName();
+      recordExtractorClass = CLPLogRecordExtractor.class.getName();
+      recordExtractorConfigClass = CLPLogRecordExtractorConfig.class.getName();
     }
     _jsonRecordExtractor = PluginManager.get().createInstance(recordExtractorClass);
     RecordExtractorConfig config = PluginManager.get().createInstance(recordExtractorConfigClass);

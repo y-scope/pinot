@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.pinot.plugin.inputformat.jsonlog.function;
+package org.apache.pinot.plugin.inputformat.clplog.function;
 
 import com.yscope.clp.compressorfrontend.MessageDecoder;
 import java.io.IOException;
