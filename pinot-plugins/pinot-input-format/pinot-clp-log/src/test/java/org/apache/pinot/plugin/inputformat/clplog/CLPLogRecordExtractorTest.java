@@ -18,6 +18,8 @@
  */
 package org.apache.pinot.plugin.inputformat.clplog;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yscope.clp.compressorfrontend.MessageDecoder;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -35,25 +37,46 @@ import static org.testng.Assert.*;
 public class CLPLogRecordExtractorTest {
   @Test
   void testCLPEncoding() {
+    // Setup decoder
     CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
     Map<String, String> props = new HashMap<>();
-    props.put("fieldsForClpEncoding", "message");
+    props.put("fieldsForClpEncoding", "message,nested.message");
     props.put("jsonDataField", "jsonData");
     Set<String> fieldsToRead = new HashSet<>();
     fieldsToRead.add("timestamp");
-    fieldsToRead.add("message");
+    fieldsToRead.add("message_logtype");
+    fieldsToRead.add("message_encodedVars");
+    fieldsToRead.add("message_dictionaryVars");
+    fieldsToRead.add("nested.message_logtype");
+    fieldsToRead.add("nested.message_encodedVars");
+    fieldsToRead.add("nested.message_dictionaryVars");
     try {
       messageDecoder.init(props, fieldsToRead, null);
     } catch (Exception e) {
       fail(e.toString());
     }
 
-    GenericRow row = new GenericRow();
+    // Assemble record
     String message = "Started job_123 on node-987 with 4 cores, 8 threads with 51.4% memory used.";
-    messageDecoder.decode(("{\"timestamp\":10,\"message\":\"" + message + "\"}").getBytes(StandardCharsets.ISO_8859_1),
-        row);
+    Map<String, Object> record = new HashMap<>();
+    record.put("timestamp", 10);
+    record.put("message", message);
+    Map<String, Object> nestedRecord = new HashMap<>();
+    nestedRecord.put("message", message);
+    record.put("nested", nestedRecord);
+    byte[] recordBytes = null;
+    try {
+      recordBytes = new ObjectMapper().writeValueAsBytes(record);
+    } catch (JsonProcessingException e) {
+      fail(e.toString());
+    }
+
+    // Test decode
+    GenericRow row = new GenericRow();
+    messageDecoder.decode(recordBytes, row);
     assertEquals(row.getValue("timestamp"), 10);
     try {
+      // Validate message field at the root of the record
       String logtype = (String) row.getValue("message_logtype");
       assertNotEquals(logtype, null);
       String[] dictionaryVars = (String[]) row.getValue("message_dictionaryVars");
@@ -61,8 +84,18 @@ public class CLPLogRecordExtractorTest {
       Long[] encodedVars = (Long[]) row.getValue("message_encodedVars");
       assertNotEquals(encodedVars, null);
       long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
-
       String decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
+      assertEquals(message, decodedMessage);
+
+      // Validate nested message field
+      logtype = (String) row.getValue("nested.message_logtype");
+      assertNotEquals(logtype, null);
+      dictionaryVars = (String[]) row.getValue("nested.message_dictionaryVars");
+      assertNotEquals(dictionaryVars, null);
+      encodedVars = (Long[]) row.getValue("nested.message_encodedVars");
+      assertNotEquals(encodedVars, null);
+      encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
+      decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
       assertEquals(message, decodedMessage);
     } catch (ClassCastException e) {
       fail(e.toString());

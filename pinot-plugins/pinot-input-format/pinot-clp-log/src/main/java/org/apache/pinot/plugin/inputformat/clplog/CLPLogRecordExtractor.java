@@ -192,22 +192,22 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
       }
 
       // Process all fields of the input record. There are 4 cases:
-      // 1. The field is at the root-level and it must be encoded with CLP
-      // 2. The field is at the root-level and the caller requested it be extracted.
+      // 1. The field is at the root-level and the caller requested it be extracted.
+      // 2. The field is at the root-level and it must be encoded with CLP
       // 3. The field is nested (e.g. a.b.c) and we know the caller requested that at least the field's common
       //    root-level ancestor (e.g. a) must be extracted; we must recurse until we get to the leaf sub-key to see if
       //    the field indeed needs extracting.
       // 4. The field is in no other category and it must be stored in jsonData (if it's set)
       for (Map.Entry<String, Object> recordEntry : from.entrySet()) {
         String recordKey = recordEntry.getKey();
-        if (clpEncodedFieldNames.contains(recordKey)) {
-          encodeFieldWithClp(recordKey, recordEntry.getValue(), to);
-        } else if (_rootLevelFields.contains(recordKey)) {
+        if (_rootLevelFields.contains(recordKey)) {
           Object recordValue = recordEntry.getValue();
           if (recordValue != null) {
             recordValue = convert(recordValue);
           }
           to.putValue(recordKey, recordValue);
+        } else if (clpEncodedFieldNames.contains(recordKey)) {
+          encodeFieldWithClp(recordKey, recordEntry.getValue(), to);
         } else if (_nestedFields.containsKey(recordKey)) {
           Object recordValue = recordEntry.getValue();
           if (!(recordValue instanceof Map)) {
@@ -304,29 +304,17 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
 
     for (Map.Entry<String, Object> recordEntry : record.entrySet()) {
       String recordKey = recordEntry.getKey();
-      if (!nestedFields.containsKey(recordKey)) {
-        if (fillJsonData) {
-          if (null == jsonData) {
-            newJsonData = new HashMap<>();
-            jsonData = newJsonData;
-          }
-          jsonData.put(recordKey, recordEntry.getValue());
-        }
-      } else {
-        String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
+      String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
+      Object recordValue = recordEntry.getValue();
 
+      if (nestedFields.containsKey(recordKey)) {
         Map<String, Object> childFields = (Map<String, Object>) nestedFields.get(recordKey);
-        Object recordValue = recordEntry.getValue();
         if (null == childFields) {
           // We've reached a leaf
-          if (clpEncodedFieldNames.contains(recordKeyFromRoot)) {
-            encodeFieldWithClp(recordKeyFromRoot, recordValue, outputRow);
-          } else {
-            if (recordValue != null) {
-              recordValue = convert(recordValue);
-            }
-            outputRow.putValue(recordKeyFromRoot, recordValue);
+          if (recordValue != null) {
+            recordValue = convert(recordValue);
           }
+          outputRow.putValue(recordKeyFromRoot, recordValue);
         } else {
           if (!(recordValue instanceof Map)) {
             LOGGER.error("Schema mismatch: Expected " + recordKeyFromRoot + " in record to be a map, but it's a "
@@ -348,6 +336,16 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
             }
             jsonData.put(recordKey, childJsonData);
           }
+        }
+      } else if (clpEncodedFieldNames.contains(recordKeyFromRoot)) {
+        encodeFieldWithClp(recordKeyFromRoot, recordValue, outputRow);
+      } else {
+        if (fillJsonData) {
+          if (null == jsonData) {
+            newJsonData = new HashMap<>();
+            jsonData = newJsonData;
+          }
+          jsonData.put(recordKey, recordEntry.getValue());
         }
       }
     }
