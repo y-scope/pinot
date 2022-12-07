@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.plugin.inputformat.clplog;
 
+import com.yscope.clp.compressorfrontend.MessageDecoder;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -25,7 +26,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.pinot.plugin.inputformat.clplog.function.CLPUDFs;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.testng.annotations.Test;
 
@@ -62,17 +62,8 @@ public class CLPLogRecordExtractorTest {
       assertNotEquals(encodedVars, null);
       long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
 
-      String decodedMessage = CLPUDFs.clpDecode((String) row.getValue("message_logtype"),
-          (String[]) row.getValue("message_dictionaryVars"), encodedVarsAsPrimitives);
+      String decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
       assertEquals(message, decodedMessage);
-
-      assertTrue(CLPUDFs.matchEncodedIntVars("*4*", logtype, encodedVarsAsPrimitives));
-      assertFalse(CLPUDFs.matchEncodedIntVars("*9*", logtype, encodedVarsAsPrimitives));
-      assertFalse(CLPUDFs.matchEncodedIntVars("*1.4*", logtype, encodedVarsAsPrimitives));
-
-      assertTrue(CLPUDFs.matchEncodedFloatVars("*1.4*", logtype, encodedVarsAsPrimitives));
-      assertFalse(CLPUDFs.matchEncodedFloatVars("*5.1*", logtype, encodedVarsAsPrimitives));
-      assertFalse(CLPUDFs.matchEncodedFloatVars("*8*", logtype, encodedVarsAsPrimitives));
     } catch (ClassCastException e) {
       fail(e.toString());
     } catch (IOException e) {
