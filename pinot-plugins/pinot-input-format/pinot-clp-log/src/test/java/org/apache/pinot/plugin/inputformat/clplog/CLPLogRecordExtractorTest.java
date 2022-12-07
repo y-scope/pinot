@@ -32,7 +32,7 @@ import org.testng.annotations.Test;
 import static org.testng.Assert.*;
 
 
-public class JSONLogRecordExtractorTest {
+public class CLPLogRecordExtractorTest {
   @Test
   void testCLPEncoding() {
     CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
@@ -60,9 +60,7 @@ public class JSONLogRecordExtractorTest {
       assertNotEquals(dictionaryVars, null);
       Long[] encodedVars = (Long[]) row.getValue("message_encodedVars");
       assertNotEquals(encodedVars, null);
-      long[] encodedVarsAsPrimitives = Arrays.stream((Long[]) row.getValue("message_encodedVars"))
-          .mapToLong(Long::longValue)
-          .toArray();
+      long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
 
       String decodedMessage = CLPUDFs.clpDecode((String) row.getValue("message_logtype"),
           (String[]) row.getValue("message_dictionaryVars"), encodedVarsAsPrimitives);

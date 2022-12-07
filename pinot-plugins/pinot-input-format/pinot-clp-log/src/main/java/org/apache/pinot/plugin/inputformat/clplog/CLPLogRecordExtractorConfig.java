@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * Configuration for the JSONLogRecordExtractor.
+ * Configuration for the CLPLogRecordExtractor.
  * <p></p>
  * There are two configuration properties:
  * <ul>
@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  *   part of the schema. If jsonDataField is set to null:
  *   <ul>
  *     <li>if the caller requested all fields be extracted, all fields will be dropped as we don't support that
- *     use-case (see JSONLogRecordExtractor for details);</li>
+ *     use-case (see CLPLogRecordExtractor for details);</li>
  *     <li>otherwise, only the extra fields will be dropped.</li>
  *   </ul></li>
  * </ul>

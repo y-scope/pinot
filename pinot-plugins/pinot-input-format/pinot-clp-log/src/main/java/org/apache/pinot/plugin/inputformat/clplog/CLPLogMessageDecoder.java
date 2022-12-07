@@ -33,33 +33,31 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * An implementation of StreamMessageDecoder to read JSON log events from a stream.
+ * An implementation of StreamMessageDecoder to read log events from a stream. This is an experimental feature.
+ * It allows us to encode user-specified fields of a log event using CLP. See CLPLogRecordExtractor for more details.
  */
 public class CLPLogMessageDecoder implements StreamMessageDecoder<byte[]> {
   private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogMessageDecoder.class);
 
-  private RecordExtractor<Map<String, Object>> _jsonRecordExtractor;
+  private RecordExtractor<Map<String, Object>> _recordExtractor;
 
   @Override
-  public void init(
-      Map<String, String> props,
-      Set<String> fieldsToRead,
-      String topicName
-  ) throws Exception {
+  public void init(Map<String, String> props, Set<String> fieldsToRead, String topicName)
+      throws Exception {
     String recordExtractorClass = null;
     String recordExtractorConfigClass = null;
     if (props != null) {
       recordExtractorClass = props.get(RECORD_EXTRACTOR_CONFIG_KEY);
       recordExtractorConfigClass = props.get(RECORD_EXTRACTOR_CONFIG_CONFIG_KEY);
     }
-    if (recordExtractorClass == null) {
+    if (null == recordExtractorClass) {
       recordExtractorClass = CLPLogRecordExtractor.class.getName();
       recordExtractorConfigClass = CLPLogRecordExtractorConfig.class.getName();
     }
-    _jsonRecordExtractor = PluginManager.get().createInstance(recordExtractorClass);
+    _recordExtractor = PluginManager.get().createInstance(recordExtractorClass);
     RecordExtractorConfig config = PluginManager.get().createInstance(recordExtractorConfigClass);
     config.init(props);
-    _jsonRecordExtractor.init(fieldsToRead, config);
+    _recordExtractor.init(fieldsToRead, config);
   }
 
   @Override
@@ -67,7 +65,7 @@ public class CLPLogMessageDecoder implements StreamMessageDecoder<byte[]> {
     try {
       JsonNode message = JsonUtils.bytesToJsonNode(payload);
       Map<String, Object> from = JsonUtils.jsonNodeToMap(message);
-      _jsonRecordExtractor.extract(from, destination);
+      _recordExtractor.extract(from, destination);
       return destination;
     } catch (Exception e) {
       LOGGER.error("Caught exception while decoding row, discarding row. Payload is {}", new String(payload), e);

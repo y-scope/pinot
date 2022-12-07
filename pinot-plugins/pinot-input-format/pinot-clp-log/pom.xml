@@ -29,8 +29,8 @@
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>pinot-json-log</artifactId>
-  <name>Pinot JSON for Logs</name>
+  <artifactId>pinot-clp-log</artifactId>
+  <name>Plugin to ingest logs either encoded by CLP or to be encoded by CLP</name>
   <url>https://pinot.apache.org/</url>
   <properties>
     <pinot.root>${basedir}/../../..</pinot.root>

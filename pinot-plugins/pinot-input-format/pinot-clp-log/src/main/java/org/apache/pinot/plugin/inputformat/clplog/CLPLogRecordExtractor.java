@@ -31,36 +31,37 @@ import javax.annotation.Nullable;
 import org.apache.pinot.spi.data.readers.BaseRecordExtractor;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.apache.pinot.spi.data.readers.RecordExtractorConfig;
+import org.apache.pinot.spi.utils.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
 /**
- * A record extractor for JSON log events. For configuration options, see JSONLogRecordExtractorConfig.
+ * A record extractor for log events. For configuration options, see CLPLogRecordExtractorConfig. This is an
+ * experimental feature.
  * <p></p>
- * The goal of this record extractor is to transform input JSON log events such that:
- * <ol>
- *   <li>the fields of the event are stored in the fields requested by the caller;</li>
- *   <li>the fields which the user configures to use CLP encoding are encoded before storage; and</li>
- *   <li>any remaining fields are stored as JSON event in the field that the user configures.</li>
- * </ol>
- *
- * For (1), the transformation may require flattening nested fields (e.g. "k1.k2" is the flattened version of
- * {"k1": {"k2": ...}}).
- * <p></p>
- * For (2), CLP is a compressor designed to encode unstructured log messages. It does this by decomposing a message
- * into 3 fields:
+ * The goal of this record extractor is to allow us to encode certain user-specified fields using CLP. CLP is a
+ * compressor designed to encode unstructured log messages in a way that makes them more compressible. It does this by
+ * decomposing a message into 3 fields:
  * <ul>
  *   <li>the message's static text, called a log type;</li>
  *   <li>repetitive variable values, called dictionary variables; and</li>
  *   <li>non-repetitive variable values (called encoded variables since we encode them specially if possible).</li>
  * </ul>
  *
- * So for the transformation in (2), the extractor takes an input field and transforms it using CLP into 3 output
- * fields. The fields that require this transformation are configured using the "fieldsForClpEncoding" setting.
- * <p></p>
- * For (3), the extractor takes any remaining fields and puts them in a single field. The name of this field is in the
- * "jsonDataField" setting.
+ * So for each user-specified field, the extractor transforms it using CLP into 3 output fields. The user can specify
+ * the fields using the "fieldsForClpEncoding" setting.
+ *
+ * This record extractor also allows us to extract fields from JSON log events as follows:
+ * <ol>
+ *   <li>fields requested by the caller (e.g., from the table's schema) are flattened and *extracted* from the JSON
+ *   event;</li>
+ *   <li>the fields which the user configures to use CLP encoding are encoded; and</li>
+ *   <li>any remaining fields are stored as a JSON object in the field that the user specifies using the "jsonDataField"
+ *   setting.</li>
+ * </ol>
+ * This is different from storing the JSON log event in column and then adding a JSON index since, in the spirit of
+ * compression, we want to minimize the amount of data stored.
  * <p></p>
  * Since this extractor transforms the input record based on what fields the caller requests, it doesn't make sense to
  * use it with ingestion transformations where the caller requests extracting all fields. As a result, we don't support
@@ -101,17 +102,19 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
    * Initializes the root-level and nested fields based on the fields requested by the caller. Nested fields are
    * converted from dot notation (e.g., "k1.k2.k3") to nested objects (e.g., {k1: {k2: {k3: null}}}) so that input
    * records can be efficiently transformed to match the given fields.
+   * <p></p>
+   * NOTE: This method doesn't handle keys with escaped separators (e.g., "par\.ent" in "par\.ent.child")
    * @param fields The fields to extract from input records
    */
   private void initializeFields(Set<String> fields) {
     ArrayList<String> subKeys = new ArrayList<>();
     for (String field : fields) {
-      int periodOffset = field.indexOf('.');
-      if (-1 == periodOffset) {
+      int keySeparatorOffset = field.indexOf(JsonUtils.KEY_SEPARATOR);
+      if (-1 == keySeparatorOffset) {
         _rootLevelFields.add(field);
       } else {
         subKeys.clear();
-        if (!getAndValidateSubKeys(field, periodOffset, subKeys)) {
+        if (!getAndValidateSubKeys(field, keySeparatorOffset, subKeys)) {
           continue;
         }
 
@@ -138,13 +141,13 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
   /**
    * Given a nested JSON field key in dot notation (e.g. "k1.k2.k3"), returns all the sub-keys (e.g. ["k1", "k2", "k3"])
    * @param key The complete key
-   * @param firstPeriodOffset The offset of the first period in `key`
+   * @param firstKeySeparatorOffset The offset of the first key separator in `key`
    * @param subKeys The array to store the sub-keys in
    * @return true on success, false if any sub-key was empty
    */
-  private boolean getAndValidateSubKeys(String key, int firstPeriodOffset, List<String> subKeys) {
+  private boolean getAndValidateSubKeys(String key, int firstKeySeparatorOffset, List<String> subKeys) {
     int subKeyBeginOffset = 0;
-    int subKeyEndOffset = firstPeriodOffset;
+    int subKeyEndOffset = firstKeySeparatorOffset;
 
     int keyLength = key.length();
     while (true) {
@@ -163,9 +166,9 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
       }
 
       // Find the end of the next sub-key
-      int periodOffset = key.indexOf('.', subKeyBeginOffset);
-      if (-1 != periodOffset) {
-        subKeyEndOffset = periodOffset;
+      int keySeparatorOffset = key.indexOf(JsonUtils.KEY_SEPARATOR, subKeyBeginOffset);
+      if (-1 != keySeparatorOffset) {
+        subKeyEndOffset = keySeparatorOffset;
       } else {
         subKeyEndOffset = key.length();
       }
@@ -251,14 +254,16 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
       if (!(value instanceof String)) {
         LOGGER.error("Can't encode value of type " + value.getClass().getName() + " with CLP.");
       } else {
+        String valueAsString = (String) value;
         try {
-          _clpMessageEncoder.encodeMessage((String) value, _clpEncodedMessage);
+          _clpMessageEncoder.encodeMessage(valueAsString, _clpEncodedMessage);
           logtype = _clpEncodedMessage.getLogTypeAsString();
           encodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
           dictVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
         } catch (IOException e) {
           // This should be rare. If it occurs in practice, we can explore storing the field in jsonData.
-          LOGGER.error("Can't encode message containing CLP variable placeholder.");
+          LOGGER.error("Can't encode field with CLP. name: '{}', value: '{}', error: {}", key, valueAsString,
+              e.getMessage());
         }
       }
     }
@@ -271,9 +276,9 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
   /**
    * Recursively processes a nested field of the input record
    * <p></p>
-   * If you imagine jsonData as a tree, we create branches only once we know a leaf exists. So for instance, if we get
-   * to the key a.b.c and discover that a.b.c.d needs to be stored in jsonData, we will create a map to store d, then
-   * while returning from the recursion, we will create c, then b, then a.
+   * If you imagine {@code jsonData} as a tree, we create branches only once we know a leaf exists. So for instance, if
+   * we get to the key a.b.c and discover that a.b.c.d needs to be stored in {@code jsonData}, we will create a map to
+   * store d; and then while returning from the recursion, we will create c, then b, then a.
    * @param keyFromRoot The key, from the root in dot notation, of the current field of the record that we're processing
    * @param nestedFields The nested fields to extract, rooted at the same level of the tree as the current field of the
    *                     record we're processing
@@ -308,7 +313,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
           jsonData.put(recordKey, recordEntry.getValue());
         }
       } else {
-        String recordKeyFromRoot = keyFromRoot + '.' + recordKey;
+        String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
 
         Map<String, Object> childFields = (Map<String, Object>) nestedFields.get(recordKey);
         Object recordValue = recordEntry.getValue();
