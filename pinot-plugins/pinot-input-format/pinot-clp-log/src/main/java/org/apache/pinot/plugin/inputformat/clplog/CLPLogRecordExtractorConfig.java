@@ -27,14 +27,12 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * Configuration for the CLPLogRecordExtractor.
- * <p></p>
- * There are two configuration properties:
+ * Configuration for the CLPLogRecordExtractor. There are two configuration properties:
  * <ul>
- *   <li>fieldsForClpEncoding - A comma-separated list of fields that should be encoded using CLP. E.g., if this
- *   contains "message", then records containing a "message" field will be encoded into three CLP fields:
- *   1) message_logtype, 2) message_dictionaryVars, and 3) message_encodedVars. If fieldsForCLPEncoding is empty, no
- *   fields will be CLP-encoded.</li>
+ *   <li><b>fieldsForClpEncoding</b> - A comma-separated list of fields that should be encoded using CLP. Each field
+ *   encoded by {@link CLPLogRecordExtractor} will result in three output fields prefixed with the original field's
+ *   name. See {@link CLPLogRecordExtractor} for details. If <b>fieldsForCLPEncoding</b> is empty, no fields will be
+ *   encoded.</li>
  *   <li>jsonDataField - The name of the field that should contain a JSON object containing extra fields that are not
  *   part of the schema. If jsonDataField is set to null:
  *   <ul>
@@ -45,12 +43,13 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * Each property can be set as part of a table's indexing configuration by adding
- * `stream.kafka.decoder.prop.[configurationKeyName]` to `streamConfigs`.
+ * {@code stream.kafka.decoder.prop.[configurationKeyName]} to {@code streamConfigs}.
  */
 public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
   private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractorConfig.class);
 
   private static final String FIELDS_FOR_CLP_ENCODING_CONFIG_KEY = "fieldsForClpEncoding";
+  private static final String FIELDS_FOR_CLP_ENCODING_SEPARATOR = ",";
   private final Set<String> _fieldsForClpEncoding = new HashSet<>();
 
   private static final String JSON_DATA_FIELD_CONFIG_KEY = "jsonDataField";
@@ -65,10 +64,10 @@ public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
 
     String concatenatedFieldNames = props.get(FIELDS_FOR_CLP_ENCODING_CONFIG_KEY);
     if (null != concatenatedFieldNames) {
-      String[] fieldNames = concatenatedFieldNames.split(",");
+      String[] fieldNames = concatenatedFieldNames.split(FIELDS_FOR_CLP_ENCODING_SEPARATOR);
       for (String fieldName : fieldNames) {
         if (fieldName.isEmpty()) {
-          LOGGER.warn("Ignoring empty field name in " + FIELDS_FOR_CLP_ENCODING_CONFIG_KEY);
+          LOGGER.warn("Ignoring empty field name in {}", FIELDS_FOR_CLP_ENCODING_CONFIG_KEY);
         } else {
           _fieldsForClpEncoding.add(fieldName);
         }

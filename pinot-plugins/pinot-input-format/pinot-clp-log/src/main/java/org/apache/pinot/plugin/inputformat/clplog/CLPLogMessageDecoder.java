@@ -34,7 +34,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * An implementation of StreamMessageDecoder to read log events from a stream. This is an experimental feature.
- * It allows us to encode user-specified fields of a log event using CLP. See CLPLogRecordExtractor for more details.
+ * It allows us to encode user-specified fields of a log event using CLP. See {@link CLPLogRecordExtractor} for more
+ * details. The implementation is based on {@link org.apache.pinot.plugin.inputformat.json.JSONMessageDecoder}.
  */
 public class CLPLogMessageDecoder implements StreamMessageDecoder<byte[]> {
   private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogMessageDecoder.class);
@@ -46,7 +47,7 @@ public class CLPLogMessageDecoder implements StreamMessageDecoder<byte[]> {
       throws Exception {
     String recordExtractorClass = null;
     String recordExtractorConfigClass = null;
-    if (props != null) {
+    if (null != props) {
       recordExtractorClass = props.get(RECORD_EXTRACTOR_CONFIG_KEY);
       recordExtractorConfigClass = props.get(RECORD_EXTRACTOR_CONFIG_CONFIG_KEY);
     }

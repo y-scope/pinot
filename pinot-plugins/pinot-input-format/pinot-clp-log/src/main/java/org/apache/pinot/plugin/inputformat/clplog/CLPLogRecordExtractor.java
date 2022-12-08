@@ -37,20 +37,17 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * A record extractor for log events. For configuration options, see CLPLogRecordExtractorConfig. This is an
+ * A record extractor for log events. For configuration options, see {@link CLPLogRecordExtractorConfig}. This is an
  * experimental feature.
  * <p></p>
- * The goal of this record extractor is to allow us to encode certain user-specified fields using CLP. CLP is a
- * compressor designed to encode unstructured log messages in a way that makes them more compressible. It does this by
- * decomposing a message into 3 fields:
+ * The goal of this record extractor is to allow us to encode the fields specified in
+ * {@link CLPLogRecordExtractorConfig} using CLP. CLP is a compressor designed to encode unstructured log messages in a
+ * way that makes them more compressible. It does this by decomposing a message into three fields:
  * <ul>
  *   <li>the message's static text, called a log type;</li>
  *   <li>repetitive variable values, called dictionary variables; and</li>
  *   <li>non-repetitive variable values (called encoded variables since we encode them specially if possible).</li>
  * </ul>
- *
- * So for each user-specified field, the extractor transforms it using CLP into 3 output fields. The user can specify
- * the fields using the "fieldsForClpEncoding" setting.
  * <p></p>
  * This record extractor also allows us to extract fields from JSON log events to further improve compressibility as
  * follows:
@@ -67,6 +64,8 @@ import org.slf4j.LoggerFactory;
  * Since this extractor transforms the input record based on what fields the caller requests, it doesn't make sense to
  * use it with ingestion transformations where the caller requests extracting all fields. As a result, we don't support
  * that use case.
+ * <p></p>
+ * This class' implementation is based on {@link org.apache.pinot.plugin.inputformat.json.JSONRecordExtractor}.
  */
 public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Object>> {
   private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractor.class);
@@ -75,16 +74,17 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
   private static final String DICTIONARY_VARS_COLUMN_SUFFIX = "_dictionaryVars";
   private static final String ENCODED_VARS_COLUMN_SUFFIX = "_encodedVars";
 
-  CLPLogRecordExtractorConfig _config;
   private Set<String> _rootLevelFields;
   private Map<String, Object> _nestedFields;
   private boolean _extractAll = false;
+  private CLPLogRecordExtractorConfig _config;
 
   private EncodedMessage _clpEncodedMessage;
   private MessageEncoder _clpMessageEncoder;
 
   @Override
   public void init(Set<String> fields, @Nullable RecordExtractorConfig recordExtractorConfig) {
+    _config = (CLPLogRecordExtractorConfig) recordExtractorConfig;
     if (fields == null || fields.isEmpty()) {
       _extractAll = true;
       LOGGER.error("This record extractor doesn't support extracting all fields.");
@@ -93,7 +93,6 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
       _nestedFields = new HashMap<>();
       initializeFields(fields);
     }
-    _config = (CLPLogRecordExtractorConfig) recordExtractorConfig;
 
     _clpEncodedMessage = new EncodedMessage();
     _clpMessageEncoder = new MessageEncoder();
@@ -203,7 +202,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
         String recordKey = recordEntry.getKey();
         if (_rootLevelFields.contains(recordKey)) {
           Object recordValue = recordEntry.getValue();
-          if (recordValue != null) {
+          if (null != recordValue) {
             recordValue = convert(recordValue);
           }
           to.putValue(recordKey, recordValue);
@@ -225,7 +224,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
           }
         } else if (null != jsonData) {
           Object recordValue = recordEntry.getValue();
-          if (recordValue != null) {
+          if (null != recordValue) {
             recordValue = convert(recordValue);
           }
           jsonData.put(recordKey, recordValue);
@@ -253,7 +252,8 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
     Object[] encodedVars = null;
     if (null != value) {
       if (!(value instanceof String)) {
-        LOGGER.error("Can't encode value of type " + value.getClass().getName() + " with CLP.");
+        LOGGER.error("Can't encode value of type {} with CLP. name: '{}', value: '{}'", value.getClass().getName(), key,
+            value);
       } else {
         String valueAsString = (String) value;
         try {
@@ -312,7 +312,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
         Map<String, Object> childFields = (Map<String, Object>) nestedFields.get(recordKey);
         if (null == childFields) {
           // We've reached a leaf
-          if (recordValue != null) {
+          if (null != recordValue) {
             recordValue = convert(recordValue);
           }
           outputRow.putValue(recordKeyFromRoot, recordValue);

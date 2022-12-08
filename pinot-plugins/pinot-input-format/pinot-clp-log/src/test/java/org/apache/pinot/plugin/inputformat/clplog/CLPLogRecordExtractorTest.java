@@ -40,16 +40,18 @@ public class CLPLogRecordExtractorTest {
     // Setup decoder
     CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
     Map<String, String> props = new HashMap<>();
-    props.put("fieldsForClpEncoding", "message,nested.message");
     props.put("jsonDataField", "jsonData");
     Set<String> fieldsToRead = new HashSet<>();
-    fieldsToRead.add("timestamp");
+    // Add two fields for CLP encoding
+    props.put("fieldsForClpEncoding", "message,nested.message");
     fieldsToRead.add("message_logtype");
     fieldsToRead.add("message_encodedVars");
     fieldsToRead.add("message_dictionaryVars");
     fieldsToRead.add("nested.message_logtype");
     fieldsToRead.add("nested.message_encodedVars");
     fieldsToRead.add("nested.message_dictionaryVars");
+    // Add an unencoded field
+    fieldsToRead.add("timestamp");
     try {
       messageDecoder.init(props, fieldsToRead, null);
     } catch (Exception e) {
@@ -57,12 +59,13 @@ public class CLPLogRecordExtractorTest {
     }
 
     // Assemble record
-    String message = "Started job_123 on node-987 with 4 cores, 8 threads with 51.4% memory used.";
     Map<String, Object> record = new HashMap<>();
     record.put("timestamp", 10);
-    record.put("message", message);
+    String message1 = "Started job_123 on node-987: 4 cores, 8 threads and 51.4% memory used.";
+    record.put("message", message1);
     Map<String, Object> nestedRecord = new HashMap<>();
-    nestedRecord.put("message", message);
+    String message2 = "Stopped job_123 on node-987: 3 cores, 6 threads and 22.0% memory used.";
+    nestedRecord.put("message", message2);
     record.put("nested", nestedRecord);
     byte[] recordBytes = null;
     try {
@@ -77,6 +80,7 @@ public class CLPLogRecordExtractorTest {
     assertEquals(row.getValue("timestamp"), 10);
     try {
       // Validate message field at the root of the record
+      assertNull(row.getValue("message1"));
       String logtype = (String) row.getValue("message_logtype");
       assertNotEquals(logtype, null);
       String[] dictionaryVars = (String[]) row.getValue("message_dictionaryVars");
@@ -85,7 +89,7 @@ public class CLPLogRecordExtractorTest {
       assertNotEquals(encodedVars, null);
       long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
       String decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
-      assertEquals(message, decodedMessage);
+      assertEquals(message1, decodedMessage);
 
       // Validate nested message field
       logtype = (String) row.getValue("nested.message_logtype");
@@ -96,11 +100,11 @@ public class CLPLogRecordExtractorTest {
       assertNotEquals(encodedVars, null);
       encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
       decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
-      assertEquals(message, decodedMessage);
+      assertEquals(message2, decodedMessage);
     } catch (ClassCastException e) {
-      fail(e.toString());
+      fail(e.getMessage(), e);
     } catch (IOException e) {
-      fail("Could not decode message with CLP.");
+      fail("Could not decode message with CLP - " + e.getMessage());
     }
   }
 
