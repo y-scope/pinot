@@ -185,11 +185,10 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
     } else {
       Set<String> clpEncodedFieldNames = _config.getFieldsForClpEncoding();
       String jsonDataFieldName = _config.getJsonDataFieldName();
+      String jsonDataNoIndexFieldName = _config.getJsonDataNoIndexFieldName();
 
-      Map<String, Object> jsonData = null;
-      if (null != jsonDataFieldName) {
-        jsonData = new HashMap<>();
-      }
+      JsonDataContainer jsonDataContainer = new JsonDataContainer(null != jsonDataFieldName,
+          null != jsonDataNoIndexFieldName, _config.getJsonDataNoIndexSuffix());
 
       // Process all fields of the input record. There are 4 cases:
       // 1. The field is at the root-level and the caller requested it be extracted.
@@ -198,6 +197,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
       //    root-level ancestor (e.g. a) must be extracted; we must recurse until we get to the leaf sub-key to see if
       //    the field indeed needs extracting.
       // 4. The field is in no other category and it must be stored in jsonData (if it's set)
+      JsonDataContainer childJsonDataContainer = new JsonDataContainer(jsonDataContainer);
       for (Map.Entry<String, Object> recordEntry : from.entrySet()) {
         String recordKey = recordEntry.getKey();
         if (_rootLevelFields.contains(recordKey)) {
@@ -211,28 +211,27 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
         } else if (_nestedFields.containsKey(recordKey)) {
           Object recordValue = recordEntry.getValue();
           if (!(recordValue instanceof Map)) {
-            LOGGER.error("Schema mismatch: Expected " + recordKey + " in record" + " to be a map, but it's a "
-                + recordValue.getClass().getName());
+            LOGGER.error("Schema mismatch: Expected {} in record to be a map, but it's a {}", recordKey,
+                recordValue.getClass().getName());
             continue;
           }
 
-          Map<String, Object> childJsonData = processNestedFieldInRecord(recordKey,
-              (Map<String, Object>) _nestedFields.get(recordKey), (Map<String, Object>) recordValue, to,
-              null != jsonData, jsonData);
-          if (null != childJsonData && null != jsonData) {
-            jsonData.put(recordKey, convert(childJsonData));
-          }
-        } else if (null != jsonData) {
-          Object recordValue = recordEntry.getValue();
-          if (null != recordValue) {
-            recordValue = convert(recordValue);
-          }
-          jsonData.put(recordKey, recordValue);
+          childJsonDataContainer.initFromParent(jsonDataContainer, recordKey);
+          processNestedFieldInRecord(recordKey, (Map<String, Object>) _nestedFields.get(recordKey),
+              (Map<String, Object>) recordValue, to, childJsonDataContainer);
+          jsonDataContainer.addChild(recordKey, childJsonDataContainer);
+        } else {
+          jsonDataContainer.addEntry(recordKey, recordEntry.getValue());
         }
       }
 
-      if (null != jsonData && !jsonData.isEmpty()) {
+      Map<String, Object> jsonData = jsonDataContainer.getJsonData();
+      if (null != jsonData) {
         to.putValue(jsonDataFieldName, jsonData);
+      }
+      Map<String, Object> jsonDataNoIndex = jsonDataContainer.getJsonDataNoIndex();
+      if (null != jsonDataNoIndex) {
+        to.putValue(jsonDataNoIndexFieldName, jsonDataNoIndex);
       }
     }
     return to;
@@ -285,24 +284,18 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
    *                     record we're processing
    * @param record The current field of the record that we're processing
    * @param outputRow The output row
-   * @param fillJsonData Whether jsonData needs to be filled with fields that remain after extracting the fields
-   *                     requested by the caller
-   * @param jsonData The jsonData fields at the rooted at the same level of the tree as the current field of the record
-   *                 that we're processing
-   * @return The jsonData fields that were created, if any. Otherwise, null.
+   * @param jsonDataContainer Container to hold the JSON objects for fields that don't fit the table's schema
    */
-  private Map<String, Object> processNestedFieldInRecord(
+  private void processNestedFieldInRecord(
       String keyFromRoot,
       Map<String, Object> nestedFields,
       Map<String, Object> record,
       GenericRow outputRow,
-      boolean fillJsonData,
-      Map<String, Object> jsonData
+      JsonDataContainer jsonDataContainer
   ) {
-    Map<String, Object> newJsonData = null;
-
     Set<String> clpEncodedFieldNames = _config.getFieldsForClpEncoding();
 
+    JsonDataContainer childJsonData = new JsonDataContainer(jsonDataContainer);
     for (Map.Entry<String, Object> recordEntry : record.entrySet()) {
       String recordKey = recordEntry.getKey();
       String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
@@ -318,39 +311,107 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
           outputRow.putValue(recordKeyFromRoot, recordValue);
         } else {
           if (!(recordValue instanceof Map)) {
-            LOGGER.error("Schema mismatch: Expected " + recordKeyFromRoot + " in record to be a map, but it's a "
-                + recordValue.getClass().getName());
+            LOGGER.error("Schema mismatch: Expected {} in record to be a map, but it's a {}", recordKeyFromRoot,
+                recordValue.getClass().getName());
             continue;
           }
           Map<String, Object> recordValueAsMap = (Map<String, Object>) recordValue;
 
-          Map<String, Object> childJsonData = null;
-          if (null != jsonData) {
-            childJsonData = (Map<String, Object>) jsonData.get(recordKey);
-          }
-          childJsonData = processNestedFieldInRecord(recordKeyFromRoot, childFields, recordValueAsMap, outputRow,
-              fillJsonData, childJsonData);
-          if (fillJsonData && null != childJsonData) {
-            if (null == jsonData) {
-              newJsonData = new HashMap<>();
-              jsonData = newJsonData;
-            }
-            jsonData.put(recordKey, childJsonData);
-          }
+          childJsonData.initFromParent(jsonDataContainer, recordKey);
+          processNestedFieldInRecord(recordKeyFromRoot, childFields, recordValueAsMap, outputRow, childJsonData);
+          jsonDataContainer.addChild(recordKey, childJsonData);
         }
       } else if (clpEncodedFieldNames.contains(recordKeyFromRoot)) {
         encodeFieldWithClp(recordKeyFromRoot, recordValue, outputRow);
       } else {
-        if (fillJsonData) {
-          if (null == jsonData) {
-            newJsonData = new HashMap<>();
-            jsonData = newJsonData;
-          }
-          jsonData.put(recordKey, recordEntry.getValue());
-        }
+        jsonDataContainer.addEntry(recordKey, recordEntry.getValue());
       }
     }
+  }
+}
 
-    return newJsonData;
+class JsonDataContainer {
+  private final boolean _fillJsonData;
+  private final boolean _fillJsonDataNoIndex;
+  private final String _jsonDataNoIndexSuffix;
+  private Map<String, Object> _jsonData;
+  private boolean _jsonDataCreatedInternally;
+  private Map<String, Object> _jsonDataNoIndex;
+  private boolean _jsonDataNoIndexCreatedInternally;
+
+  public JsonDataContainer(boolean fillJsonData, boolean fillJsonDataNoIndex, String jsonDataNoIndexSuffix) {
+    _fillJsonData = fillJsonData;
+    _fillJsonDataNoIndex = fillJsonDataNoIndex;
+    _jsonDataNoIndexSuffix = jsonDataNoIndexSuffix;
+
+    _jsonDataCreatedInternally = false;
+    _jsonDataNoIndexCreatedInternally = false;
+  }
+
+  public JsonDataContainer(JsonDataContainer parent) {
+    this(parent._fillJsonData, parent._fillJsonDataNoIndex, parent._jsonDataNoIndexSuffix);
+  }
+
+  public void initFromParent(JsonDataContainer parent, String key) {
+    _jsonDataCreatedInternally = false;
+    _jsonDataNoIndexCreatedInternally = false;
+
+    if (null == parent) {
+      _jsonData = null;
+      _jsonDataNoIndex = null;
+    } else {
+      if (null != parent._jsonData) {
+        _jsonData = (Map<String, Object>) parent._jsonData.get(key);
+      }
+      if (null != parent._jsonDataNoIndex) {
+        _jsonDataNoIndex = (Map<String, Object>) parent._jsonDataNoIndex.get(key);
+      }
+    }
+  }
+
+  public void addChild(String childKey, JsonDataContainer child) {
+    if (_fillJsonData) {
+      if (child._jsonDataCreatedInternally) {
+        if (null == _jsonData) {
+          _jsonData = new HashMap<>();
+          _jsonDataCreatedInternally = true;
+        }
+        _jsonData.put(childKey, child._jsonData);
+      }
+    }
+    if (_fillJsonDataNoIndex) {
+      if (child._jsonDataNoIndexCreatedInternally) {
+        if (null == _jsonDataNoIndex) {
+          _jsonDataNoIndex = new HashMap<>();
+          _jsonDataNoIndexCreatedInternally = true;
+        }
+        _jsonDataNoIndex.put(childKey, child._jsonDataNoIndex);
+      }
+    }
+  }
+
+  public void addEntry(String key, Object value) {
+    // TODO This doesn't handle the no-index field being in a nested object
+    if (_fillJsonDataNoIndex && key.endsWith(_jsonDataNoIndexSuffix)) {
+      if (null == _jsonData) {
+        _jsonDataNoIndex = new HashMap<>();
+        _jsonDataNoIndexCreatedInternally = true;
+      }
+      _jsonDataNoIndex.put(key, value);
+    } else if (_fillJsonData) {
+      if (null == _jsonData) {
+        _jsonData = new HashMap<>();
+        _jsonDataCreatedInternally = true;
+      }
+      _jsonData.put(key, value);
+    }
+  }
+
+  public Map<String, Object> getJsonData() {
+    return _jsonData;
+  }
+
+  public Map<String, Object> getJsonDataNoIndex() {
+    return _jsonDataNoIndex;
   }
 }

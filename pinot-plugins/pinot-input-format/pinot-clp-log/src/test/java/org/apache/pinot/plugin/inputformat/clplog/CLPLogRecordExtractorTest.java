@@ -22,7 +22,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yscope.clp.compressorfrontend.MessageDecoder;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,7 +41,7 @@ public class CLPLogRecordExtractorTest {
     Map<String, String> props = new HashMap<>();
     props.put("jsonDataField", "jsonData");
     Set<String> fieldsToRead = new HashSet<>();
-    // Add two fields for CLP encoding
+    // Add fields for CLP encoding
     props.put("fieldsForClpEncoding", "message,nested.message");
     fieldsToRead.add("message_logtype");
     fieldsToRead.add("message_encodedVars");
@@ -111,19 +110,31 @@ public class CLPLogRecordExtractorTest {
   @Test
   void testNestedFieldExtraction() {
     CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
-    Map<String, String> props = new HashMap<>();
     Set<String> fieldsToRead = new HashSet<>();
     fieldsToRead.add("timestamp");
     fieldsToRead.add("parent.child");
     try {
-      messageDecoder.init(props, fieldsToRead, null);
+      messageDecoder.init(null, fieldsToRead, null);
     } catch (Exception e) {
       fail(e.toString());
     }
 
+    // Assemble record
+    Map<String, Object> record = new HashMap<>();
+    record.put("timestamp", 10);
+    Map<String, Object> nestedRecord = new HashMap<>();
+    nestedRecord.put("child", "value");
+    record.put("parent", nestedRecord);
+    byte[] recordBytes = null;
+    try {
+      recordBytes = new ObjectMapper().writeValueAsBytes(record);
+    } catch (JsonProcessingException e) {
+      fail(e.toString());
+    }
+
+    // Test decode
     GenericRow row = new GenericRow();
-    messageDecoder.decode(("{\"timestamp\":10,\"parent\":{\"child\":\"value\"}}").getBytes(StandardCharsets.ISO_8859_1),
-        row);
+    messageDecoder.decode(recordBytes, row);
     assertEquals(row.getValue("timestamp"), 10);
     // Check that the field was flattened
     assertEquals(row.getValue("parent.child"), "value");
@@ -138,32 +149,172 @@ public class CLPLogRecordExtractorTest {
     props.put("jsonDataField", "jsonData");
     Set<String> fieldsToRead = new HashSet<>();
     fieldsToRead.add("timestamp");
+    fieldsToRead.add("jsonData");
     try {
       messageDecoder.init(props, fieldsToRead, null);
     } catch (Exception e) {
       fail(e.toString());
     }
 
+    // Assemble record:
+    // {
+    //   "timestamp": 10,
+    //   "a": {
+    //     "b": {
+    //       "c": {
+    //         "d": 0
+    //       }
+    //     },
+    //     "e": 1
+    //   }
+    // }
+    Map<String, Object> nestedRecord;
+    Map<String, Object> record;
+
+    // "d": 0
+    nestedRecord = new HashMap<>();
+    nestedRecord.put("d", 0);
+    // {"c": {"d": 0}}
+    record = new HashMap<>();
+    record.put("c", nestedRecord);
+    // {"b": {"c": {...}}}
+    nestedRecord = record;
+    record = new HashMap<>();
+    record.put("b", nestedRecord);
+    // {"b": {...}, "e": 1}
+    nestedRecord = record;
+    nestedRecord.put("e", 1);
+    // {"a": {"b": {...}, "e": 1}, "timestamp": 10}
+    record = new HashMap<>();
+    record.put("a", nestedRecord);
+    record.put("timestamp", 10);
+    byte[] recordBytes = null;
+    try {
+      recordBytes = new ObjectMapper().writeValueAsBytes(record);
+    } catch (JsonProcessingException e) {
+      fail(e.toString());
+    }
+
+    // Test decode
     GenericRow row = new GenericRow();
-    messageDecoder.decode(("{\"timestamp\":10,\"parent\":{\"child\":\"value\"}}").getBytes(StandardCharsets.ISO_8859_1),
-        row);
+    messageDecoder.decode(recordBytes, row);
     assertEquals(row.getValue("timestamp"), 10);
     // Check that fields not part of the schema weren't added
-    assertNull(row.getValue("parent.child"));
-    assertNull(row.getValue("parent"));
-    assertNull(row.getValue("child"));
-    assertNull(row.getValue("parent"));
+    assertNull(row.getValue("a.b.c.d"));
+    assertNull(row.getValue("a.b.c"));
+    assertNull(row.getValue("a.b"));
+    assertNull(row.getValue("a"));
+    assertNull(row.getValue("e"));
 
     try {
       assertNotNull(row.getValue("jsonData"));
       Map<String, Object> jsonData = (Map<String, Object>) row.getValue("jsonData");
       assertEquals(jsonData.size(), 1);
 
-      Map<String, Object> parent = (Map<String, Object>) jsonData.get("parent");
-      assertNotNull(parent);
-      assertEquals(parent.get("child"), "value");
+      Map<String, Object> node;
+      node = (Map<String, Object>) jsonData.get("a");
+      assertNotNull(node);
+
+      assertEquals(node.get("e"), 1);
+
+      node = (Map<String, Object>) node.get("b");
+      assertNotNull(node);
+
+      node = (Map<String, Object>) node.get("c");
+      assertNotNull(node);
+
+      assertEquals(node.get("d"), 0);
     } catch (ClassCastException e) {
       fail(e.toString());
     }
   }
+
+  // TODO This test won't pass until we support nested no-index fields
+//  @Test
+//  void testJSONDataNoIndexField() {
+//    CLPLogMessageDecoder messageDecoder = new CLPLogMessageDecoder();
+//    Map<String, String> props = new HashMap<>();
+//    props.put("jsonDataNoIndexField", "jsonDataNoIndex");
+//    props.put("jsonDataNoIndexSuffix", "_noIndex");
+//    Set<String> fieldsToRead = new HashSet<>();
+//    fieldsToRead.add("timestamp");
+//    fieldsToRead.add("jsonDataNoIndex");
+//    try {
+//      messageDecoder.init(props, fieldsToRead, null);
+//    } catch (Exception e) {
+//      fail(e.toString());
+//    }
+//
+//    // Assemble record:
+//    // {
+//    //   "timestamp": 10,
+//    //   "a": {
+//    //     "b": {
+//    //       "c": {
+//    //         "d_noIndex": 0
+//    //       }
+//    //     },
+//    //     "e": 1
+//    //   }
+//    // }
+//    Map<String, Object> nestedRecord;
+//    Map<String, Object> record;
+//
+//    // "d_noIndex": 0
+//    nestedRecord = new HashMap<>();
+//    nestedRecord.put("d_noIndex", 0);
+//    // {"c": {"d": 0}}
+//    record = new HashMap<>();
+//    record.put("c", nestedRecord);
+//    // {"b": {"c": {...}}}
+//    nestedRecord = record;
+//    record = new HashMap<>();
+//    record.put("b", nestedRecord);
+//    // {"b": {...}, "e": 1}
+//    nestedRecord = record;
+//    nestedRecord.put("e", 1);
+//    // {"a": {"b": {...}, "e": 1}, "timestamp": 10}
+//    record = new HashMap<>();
+//    record.put("a", nestedRecord);
+//    record.put("timestamp", 10);
+//    byte[] recordBytes = null;
+//    try {
+//      recordBytes = new ObjectMapper().writeValueAsBytes(record);
+//    } catch (JsonProcessingException e) {
+//      fail(e.toString());
+//    }
+//
+//    // Test decode
+//    GenericRow row = new GenericRow();
+//    messageDecoder.decode(recordBytes, row);
+//    assertEquals(row.getValue("timestamp"), 10);
+//    // Check that fields not part of the schema weren't added
+//    assertNull(row.getValue("a.b.c.d_noIndex"));
+//    assertNull(row.getValue("a.b.c"));
+//    assertNull(row.getValue("a.b"));
+//    assertNull(row.getValue("a"));
+//    assertNull(row.getValue("e"));
+//
+//    try {
+//      assertNotNull(row.getValue("jsonDataNoIndex"));
+//      Map<String, Object> jsonData = (Map<String, Object>) row.getValue("jsonDataNoIndex");
+//      assertEquals(jsonData.size(), 1);
+//
+//      Map<String, Object> node;
+//      node = (Map<String, Object>) jsonData.get("a");
+//      assertNotNull(node);
+//
+//      assertEquals(node.get("e"), 1);
+//
+//      node = (Map<String, Object>) node.get("b");
+//      assertNotNull(node);
+//
+//      node = (Map<String, Object>) node.get("c");
+//      assertNotNull(node);
+//
+//      assertEquals(node.get("d_noIndex"), 0);
+//    } catch (ClassCastException e) {
+//      fail(e.toString());
+//    }
+//  }
 }

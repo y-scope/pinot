@@ -26,20 +26,25 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+// TODO Make it clearer
 /**
- * Configuration for the CLPLogRecordExtractor. There are two configuration properties:
+ * Configuration for the CLPLogRecordExtractor. These are the possible configuration properties:
  * <ul>
  *   <li><b>fieldsForClpEncoding</b> - A comma-separated list of fields that should be encoded using CLP. Each field
  *   encoded by {@link CLPLogRecordExtractor} will result in three output fields prefixed with the original field's
  *   name. See {@link CLPLogRecordExtractor} for details. If <b>fieldsForCLPEncoding</b> is empty, no fields will be
  *   encoded.</li>
- *   <li>jsonDataField - The name of the field that should contain a JSON object containing extra fields that are not
- *   part of the schema. If jsonDataField is set to null:
+ *   <li><b>jsonDataField</b> - The name of the field that should contain a JSON object containing extra fields that are
+ *   not part of the schema. If <b>jsonDataField</b> is set to null:
  *   <ul>
  *     <li>if the caller requested all fields be extracted, all fields will be dropped as we don't support that
- *     use-case (see CLPLogRecordExtractor for details);</li>
+ *     use-case (see {@link CLPLogRecordExtractor} for details);</li>
  *     <li>otherwise, only the extra fields will be dropped.</li>
  *   </ul></li>
+ *   <li><b>jsonDataNoIndexField</b> - This is the same as <b>jsonDataField</b> except it only contains fields that have
+ *   the suffix specified in <b>noIndexSuffix</b>. E.g., if the user specifies "_noindex" and they try to ingest a field
+ *   called "binary_noindex", then this field would end up in the JSON object stored here.
+ *   <li><b>noIndexSuffix</b> - The suffix for fields which are not part of the schema and should not be indexed.</li>
  * </ul>
  *
  * Each property can be set as part of a table's indexing configuration by adding
@@ -53,7 +58,11 @@ public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
   private final Set<String> _fieldsForClpEncoding = new HashSet<>();
 
   private static final String JSON_DATA_FIELD_CONFIG_KEY = "jsonDataField";
+  private static final String JSON_DATA_NO_INDEX_FIELD_CONFIG_KEY = "jsonDataNoIndexField";
+  private static final String JSON_DATA_NO_INDEX_SUFFIX_CONFIG_KEY = "jsonDataNoIndexSuffix";
   private String _jsonDataFieldName;
+  private String _jsonDataNoIndexFieldName;
+  private String _jsonDataNoIndexSuffix;
 
   @Override
   public void init(Map<String, String> props) {
@@ -75,6 +84,15 @@ public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
     }
 
     _jsonDataFieldName = props.get(JSON_DATA_FIELD_CONFIG_KEY);
+    _jsonDataNoIndexFieldName = props.get(JSON_DATA_NO_INDEX_FIELD_CONFIG_KEY);
+    _jsonDataNoIndexSuffix = props.get(JSON_DATA_NO_INDEX_SUFFIX_CONFIG_KEY);
+    if ((null != _jsonDataNoIndexFieldName && null == _jsonDataNoIndexSuffix)
+        || (null == _jsonDataNoIndexFieldName && null != _jsonDataNoIndexSuffix)) {
+      LOGGER.error("Only only one of {'jsonDataNoIndexField', 'jsonDataNoIndexSuffix'} is set, but both must be set "
+          + "together.");
+      _jsonDataNoIndexFieldName = null;
+      _jsonDataNoIndexSuffix = null;
+    }
   }
 
   public Set<String> getFieldsForClpEncoding() {
@@ -83,5 +101,13 @@ public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
 
   public String getJsonDataFieldName() {
     return _jsonDataFieldName;
+  }
+
+  public String getJsonDataNoIndexFieldName() {
+    return _jsonDataNoIndexFieldName;
+  }
+
+  public String getJsonDataNoIndexSuffix() {
+    return _jsonDataNoIndexSuffix;
   }
 }
