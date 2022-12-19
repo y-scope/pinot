@@ -393,7 +393,7 @@ class JsonDataContainer {
   public void addEntry(String key, Object value) {
     // TODO This doesn't handle the no-index field being in a nested object
     if (_fillJsonDataNoIndex && key.endsWith(_jsonDataNoIndexSuffix)) {
-      if (null == _jsonData) {
+      if (null == _jsonDataNoIndex) {
         _jsonDataNoIndex = new HashMap<>();
         _jsonDataNoIndexCreatedInternally = true;
       }
