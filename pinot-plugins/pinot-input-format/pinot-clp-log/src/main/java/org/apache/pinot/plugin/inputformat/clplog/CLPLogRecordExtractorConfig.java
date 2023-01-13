@@ -51,15 +51,16 @@ import org.slf4j.LoggerFactory;
  * {@code stream.kafka.decoder.prop.[configurationKeyName]} to {@code streamConfigs}.
  */
 public class CLPLogRecordExtractorConfig implements RecordExtractorConfig {
-  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractorConfig.class);
-
   private static final String FIELDS_FOR_CLP_ENCODING_CONFIG_KEY = "fieldsForClpEncoding";
   private static final String FIELDS_FOR_CLP_ENCODING_SEPARATOR = ",";
-  private final Set<String> _fieldsForClpEncoding = new HashSet<>();
-
   private static final String JSON_DATA_FIELD_CONFIG_KEY = "jsonDataField";
   private static final String JSON_DATA_NO_INDEX_FIELD_CONFIG_KEY = "jsonDataNoIndexField";
   private static final String JSON_DATA_NO_INDEX_SUFFIX_CONFIG_KEY = "jsonDataNoIndexSuffix";
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractorConfig.class);
+
+  private final Set<String> _fieldsForClpEncoding = new HashSet<>();
+
   private String _jsonDataFieldName;
   private String _jsonDataNoIndexFieldName;
   private String _jsonDataNoIndexSuffix;

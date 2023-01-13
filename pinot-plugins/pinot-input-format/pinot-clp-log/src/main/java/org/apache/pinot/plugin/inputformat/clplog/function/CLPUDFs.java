@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.plugin.inputformat.clplog.function;
 
+import com.yscope.clp.compressorfrontend.BuiltInVariableHandlingRuleVersions;
 import com.yscope.clp.compressorfrontend.MessageDecoder;
 import java.io.IOException;
 import org.apache.pinot.spi.annotations.ScalarFunction;
@@ -41,7 +42,9 @@ public class CLPUDFs {
   @ScalarFunction
   public static String clpDecode(String logtype, String[] dictionaryVars, long[] encodedVars)
       throws IOException {
-    return MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVars);
+    MessageDecoder messageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
+        BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
+    return messageDecoder.decodeMessage(logtype, dictionaryVars, encodedVars);
   }
 
   /**
@@ -55,7 +58,9 @@ public class CLPUDFs {
   @ScalarFunction
   public static boolean matchEncodedIntVars(String wildcardQuery, String logtype, long[] encodedVars)
       throws IOException {
-    return MessageDecoder.wildcardQueryMatchesAnyIntVar(wildcardQuery, logtype, encodedVars);
+    MessageDecoder messageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
+        BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
+    return messageDecoder.wildcardQueryMatchesAnyIntVar(wildcardQuery, logtype, encodedVars);
   }
 
   /**
@@ -69,6 +74,8 @@ public class CLPUDFs {
   @ScalarFunction
   public static boolean matchEncodedFloatVars(String wildcardQuery, String logtype, long[] encodedVars)
       throws IOException {
-    return MessageDecoder.wildcardQueryMatchesAnyFloatVar(wildcardQuery, logtype, encodedVars);
+    MessageDecoder messageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
+        BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
+    return messageDecoder.wildcardQueryMatchesAnyFloatVar(wildcardQuery, logtype, encodedVars);
   }
 }

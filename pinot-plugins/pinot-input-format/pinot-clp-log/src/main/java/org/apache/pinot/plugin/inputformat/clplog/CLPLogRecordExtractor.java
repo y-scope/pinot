@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.plugin.inputformat.clplog;
 
+import com.yscope.clp.compressorfrontend.BuiltInVariableHandlingRuleVersions;
 import com.yscope.clp.compressorfrontend.EncodedMessage;
 import com.yscope.clp.compressorfrontend.MessageEncoder;
 import java.io.IOException;
@@ -68,14 +69,16 @@ import org.slf4j.LoggerFactory;
  * This class' implementation is based on {@link org.apache.pinot.plugin.inputformat.json.JSONRecordExtractor}.
  */
 public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Object>> {
-  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractor.class);
+  public static final String LOGTYPE_COLUMN_SUFFIX = "_logtype";
+  public static final String DICTIONARY_VARS_COLUMN_SUFFIX = "_dictionaryVars";
+  public static final String ENCODED_VARS_COLUMN_SUFFIX = "_encodedVars";
 
-  private static final String LOGTYPE_COLUMN_SUFFIX = "_logtype";
-  private static final String DICTIONARY_VARS_COLUMN_SUFFIX = "_dictionaryVars";
-  private static final String ENCODED_VARS_COLUMN_SUFFIX = "_encodedVars";
+  private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractor.class);
 
   private Set<String> _rootLevelFields;
   private Map<String, Object> _nestedFields;
+  // Used to indicate whether the caller wants us to extract all fields. See
+  // org.apache.pinot.spi.data.readers.RecordExtractor.init for details.
   private boolean _extractAll = false;
   private CLPLogRecordExtractorConfig _config;
 
@@ -95,7 +98,8 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
     }
 
     _clpEncodedMessage = new EncodedMessage();
-    _clpMessageEncoder = new MessageEncoder();
+    _clpMessageEncoder = new MessageEncoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
+        BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
   }
 
   /**
@@ -261,7 +265,6 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
           encodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
           dictVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
         } catch (IOException e) {
-          // This should be rare. If it occurs in practice, we can explore storing the field in jsonData.
           LOGGER.error("Can't encode field with CLP. name: '{}', value: '{}', error: {}", key, valueAsString,
               e.getMessage());
         }

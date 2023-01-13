@@ -20,6 +20,7 @@ package org.apache.pinot.plugin.inputformat.clplog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yscope.clp.compressorfrontend.BuiltInVariableHandlingRuleVersions;
 import com.yscope.clp.compressorfrontend.MessageDecoder;
 import java.io.IOException;
 import java.util.Arrays;
@@ -30,6 +31,9 @@ import java.util.Set;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.testng.annotations.Test;
 
+import static org.apache.pinot.plugin.inputformat.clplog.CLPLogRecordExtractor.DICTIONARY_VARS_COLUMN_SUFFIX;
+import static org.apache.pinot.plugin.inputformat.clplog.CLPLogRecordExtractor.ENCODED_VARS_COLUMN_SUFFIX;
+import static org.apache.pinot.plugin.inputformat.clplog.CLPLogRecordExtractor.LOGTYPE_COLUMN_SUFFIX;
 import static org.testng.Assert.*;
 
 
@@ -80,30 +84,12 @@ public class CLPLogRecordExtractorTest {
     try {
       // Validate message field at the root of the record
       assertNull(row.getValue("message1"));
-      String logtype = (String) row.getValue("message_logtype");
-      assertNotEquals(logtype, null);
-      String[] dictionaryVars = (String[]) row.getValue("message_dictionaryVars");
-      assertNotEquals(dictionaryVars, null);
-      Long[] encodedVars = (Long[]) row.getValue("message_encodedVars");
-      assertNotEquals(encodedVars, null);
-      long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
-      String decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
-      assertEquals(message1, decodedMessage);
+      validateClpEncodedField(row, "message", message1);
 
       // Validate nested message field
-      logtype = (String) row.getValue("nested.message_logtype");
-      assertNotEquals(logtype, null);
-      dictionaryVars = (String[]) row.getValue("nested.message_dictionaryVars");
-      assertNotEquals(dictionaryVars, null);
-      encodedVars = (Long[]) row.getValue("nested.message_encodedVars");
-      assertNotEquals(encodedVars, null);
-      encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
-      decodedMessage = MessageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
-      assertEquals(message2, decodedMessage);
+      validateClpEncodedField(row, "nested.message", message2);
     } catch (ClassCastException e) {
       fail(e.getMessage(), e);
-    } catch (IOException e) {
-      fail("Could not decode message with CLP - " + e.getMessage());
     }
   }
 
@@ -317,4 +303,28 @@ public class CLPLogRecordExtractorTest {
 //      fail(e.toString());
 //    }
 //  }
+
+  private void validateClpEncodedField(GenericRow row, String fieldName, String expectedFieldValue) {
+    try {
+      // Decode and validate field
+      assertNull(row.getValue(fieldName));
+      String logtype = (String) row.getValue(fieldName + LOGTYPE_COLUMN_SUFFIX);
+      assertNotEquals(logtype, null);
+      String[] dictionaryVars =
+          (String[]) row.getValue(fieldName + DICTIONARY_VARS_COLUMN_SUFFIX);
+      assertNotEquals(dictionaryVars, null);
+      Long[] encodedVars = (Long[]) row.getValue(fieldName + ENCODED_VARS_COLUMN_SUFFIX);
+      assertNotEquals(encodedVars, null);
+      long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
+
+      MessageDecoder messageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
+          BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
+      String decodedMessage = messageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
+      assertEquals(expectedFieldValue, decodedMessage);
+    } catch (ClassCastException e) {
+      fail(e.getMessage(), e);
+    } catch (IOException e) {
+      fail("Could not decode " + fieldName + " with CLP - " + e.getMessage());
+    }
+  }
 }
