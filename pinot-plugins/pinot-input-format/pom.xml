@@ -46,6 +46,7 @@
     <module>pinot-confluent-avro</module>
     <module>pinot-orc</module>
     <module>pinot-json</module>
+    <module>pinot-json-log</module>
     <module>pinot-parquet</module>
     <module>pinot-csv</module>
     <module>pinot-thrift</module>
