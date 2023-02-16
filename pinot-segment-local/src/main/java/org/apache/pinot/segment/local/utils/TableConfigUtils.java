@@ -62,6 +62,7 @@ import org.apache.pinot.spi.config.table.ingestion.BatchIngestionConfig;
 import org.apache.pinot.spi.config.table.ingestion.ComplexTypeConfig;
 import org.apache.pinot.spi.config.table.ingestion.FilterConfig;
 import org.apache.pinot.spi.config.table.ingestion.IngestionConfig;
+import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
 import org.apache.pinot.spi.config.table.ingestion.StreamIngestionConfig;
 import org.apache.pinot.spi.config.table.ingestion.TransformConfig;
 import org.apache.pinot.spi.data.FieldSpec;
@@ -440,6 +441,18 @@ public final class TableConfigUtils {
             }
           }
         }
+      }
+
+      JsonLogTransformerConfig jsonLogTransformerConfig = ingestionConfig.getJsonLogTransformerConfig();
+      if (null != jsonLogTransformerConfig) {
+        String jsonDataField = jsonLogTransformerConfig.getJsonDataField();
+        String jsonDataNoIndexField = jsonLogTransformerConfig.getJsonDataNoIndexField();
+        String jsonDataNoIndexSuffix = jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
+        Preconditions.checkArgument((null == jsonDataNoIndexField && null == jsonDataNoIndexSuffix)
+                || (null != jsonDataNoIndexField && null != jsonDataNoIndexSuffix),
+            "jsonDataNoIndexField and jsonDataNoIndexSuffix must be set together");
+        Preconditions.checkArgument(null != jsonDataField || null != jsonDataNoIndexSuffix,
+            "At least one of jsonDataField and jsonDataNoIndex must be set.");
       }
     }
   }

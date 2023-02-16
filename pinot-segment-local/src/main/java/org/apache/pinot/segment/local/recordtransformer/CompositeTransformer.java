@@ -48,6 +48,10 @@ public class CompositeTransformer implements RecordTransformer {
    *     destination columns
    *   </li>
    *   <li>
+   *     Optional {@link JsonLogTransformer} after {@link FilterTransformer}, so that we can transform a JSON log
+   *     message to a fixed schema without dropping any fields
+   *   </li>
+   *   <li>
    *     {@link DataTypeTransformer} after {@link FilterTransformer} to convert values to comply with the schema
    *   </li>
    *   <li>
@@ -67,8 +71,9 @@ public class CompositeTransformer implements RecordTransformer {
   public static CompositeTransformer getDefaultTransformer(TableConfig tableConfig, Schema schema) {
     return new CompositeTransformer(
         Stream.of(new ExpressionTransformer(tableConfig, schema), new FilterTransformer(tableConfig),
-                new DataTypeTransformer(tableConfig, schema), new TimeValidationTransformer(tableConfig, schema),
-                new NullValueTransformer(tableConfig, schema), new SanitizationTransformer(schema))
+                new JsonLogTransformer(tableConfig, schema), new DataTypeTransformer(tableConfig, schema),
+                new TimeValidationTransformer(tableConfig, schema), new NullValueTransformer(tableConfig, schema),
+                new SanitizationTransformer(schema))
             .filter(t -> !t.isNoOp()).collect(Collectors.toList()));
   }
 
