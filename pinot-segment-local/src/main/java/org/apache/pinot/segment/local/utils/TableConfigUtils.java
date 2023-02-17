@@ -451,8 +451,10 @@ public final class TableConfigUtils {
         Preconditions.checkArgument((null == jsonDataNoIndexField && null == jsonDataNoIndexSuffix)
                 || (null != jsonDataNoIndexField && null != jsonDataNoIndexSuffix),
             "jsonDataNoIndexField and jsonDataNoIndexSuffix must be set together");
-        Preconditions.checkArgument(null != jsonDataField || null != jsonDataNoIndexSuffix,
-            "At least one of jsonDataField and jsonDataNoIndex must be set.");
+        if (null != jsonDataNoIndexField) {
+          Preconditions.checkArgument(null != jsonDataField,
+              "jsonDataField must be set if jsonDataNoIndexField is set.");
+        }
       }
     }
   }
