@@ -64,8 +64,8 @@ public class IngestionConfig extends BaseJsonConfig {
   public IngestionConfig(@Nullable BatchIngestionConfig batchIngestionConfig,
       @Nullable StreamIngestionConfig streamIngestionConfig, @Nullable FilterConfig filterConfig,
       @Nullable List<TransformConfig> transformConfigs, @Nullable ComplexTypeConfig complexTypeConfig,
-      @Nullable JsonLogTransformerConfig jsonLogTransformerConfig, @Nullable List<AggregationConfig> aggregationConfigs)
-  {
+      @Nullable JsonLogTransformerConfig jsonLogTransformerConfig,
+      @Nullable List<AggregationConfig> aggregationConfigs) {
     _batchIngestionConfig = batchIngestionConfig;
     _streamIngestionConfig = streamIngestionConfig;
     _filterConfig = filterConfig;

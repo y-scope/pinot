@@ -46,18 +46,18 @@ public class JsonLogTransformer implements RecordTransformer {
   private Map<String, Object> _nestedFields;
 
   public JsonLogTransformer(TableConfig tableConfig, Schema schema) {
-    if (null == tableConfig.getIngestionConfig() ||
-        null == tableConfig.getIngestionConfig().getJsonLogTransformerConfig()) {
+    if (null == tableConfig.getIngestionConfig()
+        || null == tableConfig.getIngestionConfig().getJsonLogTransformerConfig()) {
       _jsonDataFieldName = null;
       _jsonDataNoIndexFieldName = null;
       _jsonDataNoIndexSuffix = null;
       return;
     }
 
-    JsonLogTransformerConfig _jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
-    _jsonDataFieldName = _jsonLogTransformerConfig.getJsonDataField();
-    _jsonDataNoIndexFieldName = _jsonLogTransformerConfig.getJsonDataNoIndexField();
-    _jsonDataNoIndexSuffix = _jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
+    JsonLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
+    _jsonDataFieldName = jsonLogTransformerConfig.getJsonDataField();
+    _jsonDataNoIndexFieldName = jsonLogTransformerConfig.getJsonDataNoIndexField();
+    _jsonDataNoIndexSuffix = jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
 
     _rootLevelFields = new HashSet<>();
     _nestedFields = new HashMap<>();
@@ -126,9 +126,9 @@ public class JsonLogTransformer implements RecordTransformer {
   }
 
   private boolean isSpecialField(String field) {
-    return (field.equals(StreamDataDecoderImpl.KEY) ||
-        field.startsWith(StreamDataDecoderImpl.HEADER_KEY_PREFIX) ||
-        field.startsWith(StreamDataDecoderImpl.METADATA_KEY_PREFIX));
+    return (field.equals(StreamDataDecoderImpl.KEY)
+        || field.startsWith(StreamDataDecoderImpl.HEADER_KEY_PREFIX)
+        || field.startsWith(StreamDataDecoderImpl.METADATA_KEY_PREFIX));
   }
 
   /**

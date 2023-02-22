@@ -87,7 +87,7 @@ public class ClpDecodeTransformFunction extends BaseTransformFunction {
 
     MessageDecoder clpMessageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
         BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
-    for (int i = 0; i < length; ++i) {
+    for (int i = 0; i < length; i++) {
       try {
         _stringValuesSV[i] = clpMessageDecoder.decodeMessage(logtypes[i], dictionaryVars[i], encodedVars[i]);
       } catch (IOException ex) {
