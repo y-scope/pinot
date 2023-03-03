@@ -41,6 +41,7 @@ public class JsonLogTransformer implements RecordTransformer {
   private final String _jsonDataFieldName;
   private final String _jsonDataNoIndexFieldName;
   private final String _jsonDataNoIndexSuffix;
+  private final Set<String> _fieldPathsToDrop;
 
   private Set<String> _rootLevelFields;
   private Map<String, Object> _nestedFields;
@@ -51,6 +52,7 @@ public class JsonLogTransformer implements RecordTransformer {
       _jsonDataFieldName = null;
       _jsonDataNoIndexFieldName = null;
       _jsonDataNoIndexSuffix = null;
+      _fieldPathsToDrop = null;
       return;
     }
 
@@ -58,6 +60,7 @@ public class JsonLogTransformer implements RecordTransformer {
     _jsonDataFieldName = jsonLogTransformerConfig.getJsonDataField();
     _jsonDataNoIndexFieldName = jsonLogTransformerConfig.getJsonDataNoIndexField();
     _jsonDataNoIndexSuffix = jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
+    _fieldPathsToDrop = jsonLogTransformerConfig.getFieldPathsToDrop();
 
     _rootLevelFields = new HashSet<>();
     _nestedFields = new HashMap<>();
@@ -95,6 +98,11 @@ public class JsonLogTransformer implements RecordTransformer {
     for (Map.Entry<String, Object> recordEntry : record.getFieldToValueMap().entrySet()) {
       String recordKey = recordEntry.getKey();
       Object recordValue = recordEntry.getValue();
+
+      if (_fieldPathsToDrop.contains(recordKey)) {
+        continue;
+      }
+
       if (_rootLevelFields.contains(recordKey) || isSpecialField(recordKey)) {
         outputRecord.putValue(recordKey, recordValue);
       } else if (_nestedFields.containsKey(recordKey)) {
@@ -235,6 +243,10 @@ public class JsonLogTransformer implements RecordTransformer {
       String recordKey = recordEntry.getKey();
       String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
       Object recordValue = recordEntry.getValue();
+
+      if (_fieldPathsToDrop.contains(recordKeyFromRoot)) {
+        continue;
+      }
 
       if (nestedFields.containsKey(recordKey)) {
         Map<String, Object> childFields = (Map<String, Object>) nestedFields.get(recordKey);

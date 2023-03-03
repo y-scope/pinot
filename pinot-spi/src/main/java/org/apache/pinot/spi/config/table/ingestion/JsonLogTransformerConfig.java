@@ -21,6 +21,7 @@ package org.apache.pinot.spi.config.table.ingestion;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
+import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.BaseJsonConfig;
 
@@ -34,13 +35,18 @@ public class JsonLogTransformerConfig extends BaseJsonConfig {
   @JsonPropertyDescription("The suffix to use with jsonDataNoIndex")
   private final String _jsonDataNoIndexSuffix;
 
+  @JsonPropertyDescription("Array of field paths to drop")
+  private final Set<String> _fieldPathsToDrop;
+
   @JsonCreator
   public JsonLogTransformerConfig(@JsonProperty("jsonDataField") @Nullable String jsonDataField,
       @JsonProperty("jsonDataNoIndexField") @Nullable String jsonDataNoIndexField,
-      @JsonProperty("jsonDataNoIndexSuffix") @Nullable String jsonDataNoIndexSuffix) {
+      @JsonProperty("jsonDataNoIndexSuffix") @Nullable String jsonDataNoIndexSuffix,
+      @JsonProperty("fieldPathsToDrop") @Nullable Set<String> fieldPathsToDrop) {
     _jsonDataField = jsonDataField;
     _jsonDataNoIndexField = jsonDataNoIndexField;
     _jsonDataNoIndexSuffix = jsonDataNoIndexSuffix;
+    _fieldPathsToDrop = fieldPathsToDrop;
   }
 
   @Nullable
@@ -56,5 +62,10 @@ public class JsonLogTransformerConfig extends BaseJsonConfig {
   @Nullable
   public String getJsonDataNoIndexSuffix() {
     return _jsonDataNoIndexSuffix;
+  }
+
+  @Nullable
+  public Set<String> getFieldPathsToDrop() {
+    return _fieldPathsToDrop;
   }
 }
