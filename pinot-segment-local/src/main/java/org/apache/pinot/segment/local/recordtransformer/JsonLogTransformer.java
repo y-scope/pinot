@@ -99,7 +99,7 @@ public class JsonLogTransformer implements RecordTransformer {
       String recordKey = recordEntry.getKey();
       Object recordValue = recordEntry.getValue();
 
-      if (_fieldPathsToDrop.contains(recordKey)) {
+      if (null != _fieldPathsToDrop && _fieldPathsToDrop.contains(recordKey)) {
         continue;
       }
 
@@ -244,7 +244,7 @@ public class JsonLogTransformer implements RecordTransformer {
       String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
       Object recordValue = recordEntry.getValue();
 
-      if (_fieldPathsToDrop.contains(recordKeyFromRoot)) {
+      if (null != _fieldPathsToDrop && _fieldPathsToDrop.contains(recordKeyFromRoot)) {
         continue;
       }
 
