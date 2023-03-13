@@ -451,9 +451,17 @@ public final class TableConfigUtils {
         Preconditions.checkArgument((null == jsonDataNoIndexField && null == jsonDataNoIndexSuffix)
                 || (null != jsonDataNoIndexField && null != jsonDataNoIndexSuffix),
             "jsonDataNoIndexField and jsonDataNoIndexSuffix must be set together");
-        if (null != jsonDataNoIndexField) {
-          Preconditions.checkArgument(null != jsonDataField,
-              "jsonDataField must be set if jsonDataNoIndexField is set.");
+        if (null != schema) {
+          if (null != jsonDataField) {
+            DataType fieldType = schema.getFieldSpecFor(jsonDataField).getDataType();
+            Preconditions.checkArgument(DataType.STRING == fieldType || DataType.JSON == fieldType,
+                "jsonData field must be of type STRING or JSON");
+          }
+          if (null != jsonDataNoIndexField) {
+            DataType fieldType = schema.getFieldSpecFor(jsonDataField).getDataType();
+            Preconditions.checkArgument(DataType.STRING == fieldType || DataType.JSON == fieldType,
+                "jsonDataNoIndex field must be of type STRING or JSON");
+          }
         }
       }
     }

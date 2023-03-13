@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.segment.local.recordtransformer;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,6 +28,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.table.TableConfig;
 import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
+import org.apache.pinot.spi.data.FieldSpec.DataType;
 import org.apache.pinot.spi.data.Schema;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.apache.pinot.spi.stream.StreamDataDecoderImpl;
@@ -39,7 +41,9 @@ public class JsonLogTransformer implements RecordTransformer {
   private static final Logger _logger = LoggerFactory.getLogger(JsonLogTransformer.class);
 
   private final String _jsonDataFieldName;
+  private final DataType _jsonDataFieldType;
   private final String _jsonDataNoIndexFieldName;
+  private final DataType _jsonDataNoIndexFieldType;
   private final String _jsonDataNoIndexSuffix;
   private final Set<String> _fieldPathsToDrop;
 
@@ -50,7 +54,9 @@ public class JsonLogTransformer implements RecordTransformer {
     if (null == tableConfig.getIngestionConfig()
         || null == tableConfig.getIngestionConfig().getJsonLogTransformerConfig()) {
       _jsonDataFieldName = null;
+      _jsonDataFieldType = null;
       _jsonDataNoIndexFieldName = null;
+      _jsonDataNoIndexFieldType = null;
       _jsonDataNoIndexSuffix = null;
       _fieldPathsToDrop = null;
       return;
@@ -58,7 +64,9 @@ public class JsonLogTransformer implements RecordTransformer {
 
     JsonLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
     _jsonDataFieldName = jsonLogTransformerConfig.getJsonDataField();
+    _jsonDataFieldType = schema.getFieldSpecFor(_jsonDataFieldName).getDataType();
     _jsonDataNoIndexFieldName = jsonLogTransformerConfig.getJsonDataNoIndexField();
+    _jsonDataNoIndexFieldType = schema.getFieldSpecFor(_jsonDataNoIndexFieldName).getDataType();
     _jsonDataNoIndexSuffix = jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
     _fieldPathsToDrop = jsonLogTransformerConfig.getFieldPathsToDrop();
 
@@ -121,14 +129,9 @@ public class JsonLogTransformer implements RecordTransformer {
       }
     }
 
-    Map<String, Object> jsonData = jsonDataContainer.getJsonData();
-    if (null != jsonData) {
-      outputRecord.putValue(_jsonDataFieldName, jsonData);
-    }
-    Map<String, Object> jsonDataNoIndex = jsonDataContainer.getJsonDataNoIndex();
-    if (null != jsonDataNoIndex) {
-      outputRecord.putValue(_jsonDataNoIndexFieldName, jsonDataNoIndex);
-    }
+    putJsonField(_jsonDataFieldName, _jsonDataFieldType, jsonDataContainer.getJsonData(), outputRecord);
+    putJsonField(_jsonDataNoIndexFieldName, _jsonDataNoIndexFieldType, jsonDataContainer.getJsonDataNoIndex(),
+        outputRecord);
 
     return outputRecord;
   }
@@ -267,6 +270,22 @@ public class JsonLogTransformer implements RecordTransformer {
         }
       } else {
         jsonDataContainer.addEntry(recordKey, recordEntry.getValue());
+      }
+    }
+  }
+
+  private void putJsonField(String fieldName, DataType fieldType, Map<String, Object> field, GenericRow outputRecord) {
+    if (null == field) {
+      return;
+    }
+
+    if (DataType.JSON == fieldType) {
+      outputRecord.putValue(fieldName, field);
+    } else {
+      try {
+        outputRecord.putValue(fieldName, JsonUtils.objectToString(field));
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException("Failed to convert \"" + fieldName + "\" to string", e);
       }
     }
   }
