@@ -117,31 +117,52 @@ public class ClpRewriter implements QueryRewriter {
     Function currentFunction = expression.getFunctionCall();
     List<Expression> arguments = currentFunction.getOperands();
 
-    // Validate the arguments
-    if (arguments.size() != 2) {
+    // Validate the input arguments and construct clpDecode arguments
+    Function clpDecodeCall = new Function(TransformFunctionType.CLPDECODE.getName().toLowerCase());
+    String subFunctionString;
+    if (arguments.size() == 2) {
+      Expression arg0 = arguments.get(0);
+      if (ExpressionType.IDENTIFIER != arg0.getType()) {
+        throw new SqlCompilationException("clpMatch: First argument must be an identifier.");
+      }
+      String columnGroupName = arg0.getIdentifier().getName();
+
+      Expression arg1 = arguments.get(1);
+      if (ExpressionType.LITERAL != arg1.getType()) {
+        throw new SqlCompilationException("clpMatch: Second argument must be a literal.");
+      }
+      subFunctionString = arg1.getLiteral().getStringValue();
+
+      if (subFunctionString.isEmpty()) {
+        throw new SqlCompilationException("clpMatch: Query cannot be empty.");
+      }
+
+      addClpDecodeOperands(columnGroupName, clpDecodeCall);
+    } else if (arguments.size() == 4) {
+      for (int i = 0; i < 3; i++) {
+        Expression arg = arguments.get(i);
+        if (ExpressionType.IDENTIFIER != arg.getType()) {
+          throw new SqlCompilationException("clpMatch: Argument i=" + i + " must be an identifier.");
+        }
+        clpDecodeCall.addToOperands(arg);
+      }
+
+      Expression arg1 = arguments.get(3);
+      if (ExpressionType.LITERAL != arg1.getType()) {
+        throw new SqlCompilationException("clpMatch: Argument i=3 must be a literal.");
+      }
+      subFunctionString = arg1.getLiteral().getStringValue();
+
+      if (subFunctionString.isEmpty()) {
+        throw new SqlCompilationException("clpMatch: Query cannot be empty.");
+      }
+    } else {
       // Wrong number of args
       return;
     }
-    Expression arg0 = arguments.get(0);
-    if (ExpressionType.IDENTIFIER != arg0.getType()) {
-      throw new SqlCompilationException("clpMatch: First argument must be an identifier.");
-    }
-    String columnGroupName = arg0.getIdentifier().getName();
-
-    Expression arg1 = arguments.get(1);
-    if (ExpressionType.LITERAL != arg1.getType()) {
-      throw new SqlCompilationException("clpMatch: Second argument must be a literal.");
-    }
-    String subFunctionString = arg1.getLiteral().getStringValue();
-
-    if (subFunctionString.isEmpty()) {
-      throw new SqlCompilationException("clpMatch: Query cannot be empty.");
-    }
-
-    Function clpDecodeCall = new Function(TransformFunctionType.CLPDECODE.getName().toLowerCase());
-    addClpDecodeOperands(columnGroupName, clpDecodeCall);
 
     Function clpDecodeLike = new Function(SqlKind.LIKE.name());
+
     Expression e;
     e = new Expression(ExpressionType.FUNCTION);
     e.setFunctionCall(clpDecodeCall);
