@@ -50,27 +50,27 @@ public class ClpRewriter implements QueryRewriter {
     List<Expression> selectExpressions = pinotQuery.getSelectList();
     if (null != selectExpressions) {
       for (Expression e : selectExpressions) {
-        tryRewritingExpression(e);
+        tryRewritingExpression(e, false);
       }
     }
     List<Expression> groupByExpressions = pinotQuery.getGroupByList();
     if (null != groupByExpressions) {
       for (Expression e : groupByExpressions) {
-        tryRewritingExpression(e);
+        tryRewritingExpression(e, false);
       }
     }
     List<Expression> orderByExpressions = pinotQuery.getOrderByList();
     if (null != orderByExpressions) {
       for (Expression e : orderByExpressions) {
-        tryRewritingExpression(e);
+        tryRewritingExpression(e, false);
       }
     }
-    tryRewritingExpression(pinotQuery.getFilterExpression());
-    tryRewritingExpression(pinotQuery.getHavingExpression());
+    tryRewritingExpression(pinotQuery.getFilterExpression(), true);
+    tryRewritingExpression(pinotQuery.getHavingExpression(), true);
     return pinotQuery;
   }
 
-  private void tryRewritingExpression(Expression expression) {
+  private void tryRewritingExpression(Expression expression, boolean isFilterExpression) {
     if (null == expression) {
       return;
     }
@@ -83,11 +83,15 @@ public class ClpRewriter implements QueryRewriter {
     if (functionName.equals(CLPDECODE_LOWERCASE_TRANSFORM_NAME)) {
       tryRewritingClpDecodeFunction(expression);
     } else if (functionName.equals(CLPMATCH_LOWERCASE_FUNCTION_NAME)) {
+      if (!isFilterExpression) {
+        throw new SqlCompilationException(CLPMATCH_LOWERCASE_FUNCTION_NAME + " cannot be used outside filter"
+            + " expressions.");
+      }
       tryRewritingClpMatchFunction(expression);
     } else {
       // Function isn't a CLP function that needs rewriting, but the arguments might be, so recursively process them.
       for (Expression arg : function.getOperands()) {
-        tryRewritingExpression(arg);
+        tryRewritingExpression(arg, isFilterExpression);
       }
     }
   }
