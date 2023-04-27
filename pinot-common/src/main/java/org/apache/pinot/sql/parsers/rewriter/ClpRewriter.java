@@ -197,7 +197,6 @@ public class ClpRewriter implements QueryRewriter {
 
   private String convertToSqlWildcardQuery(String wildcardQuery) {
     boolean isEscaped = false;
-    boolean containsWildcard = false;
     StringBuilder queryWithSqlWildcards = new StringBuilder();
     int unCopiedOffset = 0;
     for (int i = 0; i < wildcardQuery.length(); i++) {
@@ -214,7 +213,6 @@ public class ClpRewriter implements QueryRewriter {
         if ('\\' == c) {
           isEscaped = true;
         } else if ('*' == c || '?' == c) {
-          containsWildcard = true;
           queryWithSqlWildcards.append(wildcardQuery, unCopiedOffset, i);
           queryWithSqlWildcards.append('*' == c ? '%' : '_');
           unCopiedOffset = i + 1;
@@ -230,6 +228,6 @@ public class ClpRewriter implements QueryRewriter {
       queryWithSqlWildcards.append(wildcardQuery, unCopiedOffset, wildcardQuery.length());
     }
 
-    return containsWildcard ? queryWithSqlWildcards.toString() : null;
+    return queryWithSqlWildcards.toString();
   }
 }
