@@ -156,8 +156,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
           encodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
           dictVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
         } catch (IOException e) {
-          LOGGER.error("Can't encode field with CLP. name: '{}', value: '{}', error: {}", key, valueAsString,
-              e.getMessage());
+          LOGGER.error("Can't encode field with CLP. name: '{}', error: {}", key, e.getMessage());
         }
       }
     }
