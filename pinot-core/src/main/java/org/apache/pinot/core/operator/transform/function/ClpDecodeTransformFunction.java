@@ -35,7 +35,21 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * TODO
+ * Decodes a CLP-encoded column group into the original values.
+ * <p>
+ * Syntax:
+ * <pre>
+ *   clpDecode("columnGroupName_logtype", "columnGroupName_dictionaryVars",
+ *             "columnGroupName_encodedVars")
+ * </pre>
+ * <p>
+ * Sample queries
+ * <pre>
+ *   -- This relies on ClpRewriter
+ *   SELECT clpDecode("message") FROM table
+ *   -- This doesn't require ClpRewriter
+ *   SELECT clpDecode("message_logtype", "message_dictionaryVars", "message_encodedVars") FROM table
+ * </pre>
  */
 public class ClpDecodeTransformFunction extends BaseTransformFunction {
   private static final Logger LOGGER = LoggerFactory.getLogger(ClpDecodeTransformFunction.class);

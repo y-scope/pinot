@@ -195,6 +195,11 @@
   </build>
   <dependencies>
     <dependency>
+      <groupId>com.yscope.clp</groupId>
+      <artifactId>clp-ffi</artifactId>
+      <version>0.4.0</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.pinot</groupId>
       <artifactId>pinot-spi</artifactId>
     </dependency>

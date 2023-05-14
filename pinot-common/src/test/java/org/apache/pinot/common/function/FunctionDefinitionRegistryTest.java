@@ -43,7 +43,8 @@ public class FunctionDefinitionRegistryTest {
   private static final List<String> IGNORED_FUNCTION_NAMES = ImmutableList.of(
       // functions we are not supporting post transform anyway
       "valuein", "mapvalue", "inidset", "lookup", "groovy", "scalar", "geotoh3", "case", "not_in", "timeconvert",
-      "clpdecode",
+      TransformFunctionType.CLPDECODE.getName().toLowerCase(),
+      TransformFunctionType.CLPENCODEDVARSMATCH.getName().toLowerCase(),
       // functions not needed for register b/c they are in std sql table or they will not be composed directly.
       "in", "and", "or", "not", "range", "extract"
   );
