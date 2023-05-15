@@ -250,7 +250,7 @@ public class ClpRewriter implements QueryRewriter {
       }
       int i = 0;
       String logtypeColumnName = arguments.get(i++).getIdentifier().getName();
-      String dictionaryVarsColumnName = arguments.get(i).getIdentifier().getName();
+      String dictionaryVarsColumnName = arguments.get(i++).getIdentifier().getName();
       String encodedVarsColumnName = arguments.get(i++).getIdentifier().getName();
 
       Expression arg1 = arguments.get(3);
