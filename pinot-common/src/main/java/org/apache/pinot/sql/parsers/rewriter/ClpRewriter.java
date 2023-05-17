@@ -35,6 +35,7 @@ import org.apache.pinot.common.request.Function;
 import org.apache.pinot.common.request.Identifier;
 import org.apache.pinot.common.request.Literal;
 import org.apache.pinot.common.request.PinotQuery;
+import org.apache.pinot.common.request.context.predicate.Predicate;
 import org.apache.pinot.sql.parsers.SqlCompilationException;
 
 
@@ -60,11 +61,14 @@ public class ClpRewriter implements QueryRewriter {
   private static final String _CLPDECODE_LOWERCASE_TRANSFORM_NAME =
       TransformFunctionType.CLPDECODE.getName().toLowerCase();
   private static final String _CLPMATCH_LOWERCASE_FUNCTION_NAME = "clpmatch";
+  private static final String _REGEXP_LIKE_LOWERCASE_FUNCTION_NAME = Predicate.Type.REGEXP_LIKE.name();
   // TODO These suffixes should be made common between org.apache.pinot.plugin.inputformat.clplog.CLPLogRecordExtractor
   //  and this class
   public static final String LOGTYPE_COLUMN_SUFFIX = "_logtype";
   public static final String DICTIONARY_VARS_COLUMN_SUFFIX = "_dictionaryVars";
   public static final String ENCODED_VARS_COLUMN_SUFFIX = "_encodedVars";
+  private static final char[] _NON_WILDCARD_REGEX_META_CHARACTERS =
+      {'^', '$', '.', '{', '}', '[', ']', '(', ')', '+', '|', '<', '>', '-', '/', '=', '!'};
 
   @Override
   public PinotQuery rewrite(PinotQuery pinotQuery) {
@@ -296,17 +300,17 @@ public class ClpRewriter implements QueryRewriter {
     // `clpDecode(...) LIKE '<wildcardQuery>'`.
     // TODO Add some examples
     // For now, we're conservative and add it to every query
-    Function clpDecodeCall = new Function(TransformFunctionType.CLPDECODE.getName().toLowerCase());
+    Function clpDecodeCall = new Function(_CLPDECODE_LOWERCASE_TRANSFORM_NAME);
     addClpDecodeOperands(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, clpDecodeCall);
 
-    Function clpDecodeLike = new Function(SqlKind.LIKE.name());
+    Function clpDecodeLike = new Function(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME);
     Expression e;
     e = new Expression(ExpressionType.FUNCTION);
     e.setFunctionCall(clpDecodeCall);
     clpDecodeLike.addToOperands(e);
 
     e = new Expression(ExpressionType.LITERAL);
-    e.setLiteral(Literal.stringValue(convertToSqlWildcardQuery(wildcardQuery)));
+    e.setLiteral(Literal.stringValue(wildcardQueryToRegex(wildcardQuery)));
     clpDecodeLike.addToOperands(e);
 
     Function newFunction = new Function(SqlKind.AND.name());
@@ -355,8 +359,8 @@ public class ClpRewriter implements QueryRewriter {
 
       // Add any wildcard dictionary variables
       for (VariableWildcardQuery wildcardQuery : subquery.getDictVarWildcardQueries()) {
-        f = createStringColumnMatchFunction(SqlKind.LIKE.name(), dictionaryVarsColumnName,
-            convertToSqlWildcardQuery(wildcardQuery.getQuery().toString()));
+        f = createStringColumnMatchFunction(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME, dictionaryVarsColumnName,
+            wildcardQueryToRegex(wildcardQuery.getQuery().toString()));
         topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
       }
 
@@ -424,8 +428,8 @@ public class ClpRewriter implements QueryRewriter {
   private Function createLogtypeMatchFunction(String columnName, String query, boolean containsWildcards) {
     Function func;
     if (containsWildcards) {
-      String queryWithSqlWildcards = convertToSqlWildcardQuery(query);
-      func = createStringColumnMatchFunction(SqlKind.LIKE.name(), columnName, queryWithSqlWildcards);
+      func = createStringColumnMatchFunction(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME, columnName,
+          wildcardQueryToRegex(query));
     } else {
       func = createStringColumnMatchFunction(SqlKind.EQUALS.name(), columnName, query);
     }
@@ -469,39 +473,52 @@ public class ClpRewriter implements QueryRewriter {
     clpDecode.addToOperands(e);
   }
 
-  private String convertToSqlWildcardQuery(String wildcardQuery) {
+  private static String wildcardQueryToRegex(String wildcardQuery) {
     boolean isEscaped = false;
     StringBuilder queryWithSqlWildcards = new StringBuilder();
-    int unCopiedOffset = 0;
-    for (int i = 0; i < wildcardQuery.length(); i++) {
-      char c = wildcardQuery.charAt(i);
+
+    // Add begin anchor if necessary
+    if (wildcardQuery.length() > 0 && '*' != wildcardQuery.charAt(0)) {
+      queryWithSqlWildcards.append('^');
+    }
+
+    int unCopiedIdx = 0;
+    for (int queryIdx = 0; queryIdx < wildcardQuery.length(); queryIdx++) {
+      char queryChar = wildcardQuery.charAt(queryIdx);
       if (isEscaped) {
         isEscaped = false;
-
-        if ('*' == c || '?' == c) {
-          // Remove escape character for non-SQL wildcards
-          queryWithSqlWildcards.append(wildcardQuery, unCopiedOffset, i - 1);
-          unCopiedOffset = i;
-        }
       } else {
-        if ('\\' == c) {
+        if ('\\' == queryChar) {
           isEscaped = true;
-        } else if ('*' == c || '?' == c) {
-          queryWithSqlWildcards.append(wildcardQuery, unCopiedOffset, i);
-          queryWithSqlWildcards.append('*' == c ? '%' : '_');
-          unCopiedOffset = i + 1;
-        } else if ('%' == c || '_' == c) {
-          queryWithSqlWildcards.append(wildcardQuery, unCopiedOffset, i);
-          queryWithSqlWildcards.append('\\');
-          queryWithSqlWildcards.append(c);
-          unCopiedOffset = i + 1;
+        } else if (isWildcard(queryChar)) {
+          queryWithSqlWildcards.append(wildcardQuery, unCopiedIdx, queryIdx);
+          queryWithSqlWildcards.append('.');
+          unCopiedIdx = queryIdx;
+        } else {
+          for (final char metaChar : _NON_WILDCARD_REGEX_META_CHARACTERS) {
+            if (metaChar == queryChar) {
+              queryWithSqlWildcards.append(wildcardQuery, unCopiedIdx, queryIdx);
+              queryWithSqlWildcards.append('\\');
+              unCopiedIdx = queryIdx;
+              break;
+            }
+          }
         }
       }
     }
-    if (unCopiedOffset < wildcardQuery.length()) {
-      queryWithSqlWildcards.append(wildcardQuery, unCopiedOffset, wildcardQuery.length());
+    if (unCopiedIdx < wildcardQuery.length()) {
+      queryWithSqlWildcards.append(wildcardQuery, unCopiedIdx, wildcardQuery.length());
+    }
+
+    // Add end anchor if necessary
+    if (wildcardQuery.length() > 0 && '*' != wildcardQuery.charAt(wildcardQuery.length() - 1)) {
+      queryWithSqlWildcards.append('$');
     }
 
     return queryWithSqlWildcards.toString();
+  }
+
+  private static boolean isWildcard(char c) {
+    return '*' == c || '?' == c;
   }
 }
