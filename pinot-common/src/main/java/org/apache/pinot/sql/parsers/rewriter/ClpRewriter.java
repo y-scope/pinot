@@ -26,8 +26,12 @@ import com.yscope.clp.compressorfrontend.EightByteClpWildcardQueryEncoder;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.pinot.common.function.TransformFunctionType;
 import org.apache.pinot.common.request.Expression;
 import org.apache.pinot.common.request.ExpressionType;
@@ -62,6 +66,7 @@ public class ClpRewriter implements QueryRewriter {
       TransformFunctionType.CLPDECODE.getName().toLowerCase();
   private static final String _CLPMATCH_LOWERCASE_FUNCTION_NAME = "clpmatch";
   private static final String _REGEXP_LIKE_LOWERCASE_FUNCTION_NAME = Predicate.Type.REGEXP_LIKE.name();
+  private static final String _TEXT_MATCH_LOWERCASE_FUNCTION_NAME = Predicate.Type.TEXT_MATCH.name();
   // TODO These suffixes should be made common between org.apache.pinot.plugin.inputformat.clplog.CLPLogRecordExtractor
   //  and this class
   public static final String LOGTYPE_COLUMN_SUFFIX = "_logtype";
@@ -282,16 +287,20 @@ public class ClpRewriter implements QueryRewriter {
     EightByteClpEncodedSubquery[] subqueries = queryEncoder.encode(wildcardQuery);
 
     Function subqueriesFunction;
-    if (1 == subqueries.length) {
-      subqueriesFunction =
-          convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subqueries[0]);
-    } else {
-      subqueriesFunction = new Function(SqlKind.OR.name());
+    try (WildcardToLuceneQueryEncoder luceneQueryEncoder = new WildcardToLuceneQueryEncoder()) {
+      if (1 == subqueries.length) {
+        subqueriesFunction =
+            convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subqueries[0],
+                luceneQueryEncoder);
+      } else {
+        subqueriesFunction = new Function(SqlKind.OR.name());
 
-      for (EightByteClpEncodedSubquery subquery : subqueries) {
-        Function subqueryFunction =
-            convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery);
-        subqueriesFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueryFunction));
+        for (EightByteClpEncodedSubquery subquery : subqueries) {
+          Function subqueryFunction =
+              convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery,
+                  luceneQueryEncoder);
+          subqueriesFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueryFunction));
+        }
       }
     }
 
@@ -321,18 +330,19 @@ public class ClpRewriter implements QueryRewriter {
   }
 
   private Function convertSubqueryToSql(String logtypeColumnName, String dictionaryVarsColumnName,
-      String encodedVarsColumnName, EightByteClpEncodedSubquery subquery) {
+      String encodedVarsColumnName, EightByteClpEncodedSubquery subquery,
+      WildcardToLuceneQueryEncoder luceneQueryEncoder) {
     Function topLevelFunction;
 
     if (!subquery.containsVariables()) {
       topLevelFunction = createLogtypeMatchFunction(logtypeColumnName, subquery.getLogtypeQueryAsString(),
-          subquery.logtypeQueryContainsWildcards());
+          subquery.logtypeQueryContainsWildcards(), luceneQueryEncoder);
     } else {
       topLevelFunction = new Function(SqlKind.AND.name());
 
       // Add logtype query
       Function f = createLogtypeMatchFunction(logtypeColumnName, subquery.getLogtypeQueryAsString(),
-          subquery.logtypeQueryContainsWildcards());
+          subquery.logtypeQueryContainsWildcards(), luceneQueryEncoder);
       topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
 
       // Add any dictionary variables
@@ -359,9 +369,17 @@ public class ClpRewriter implements QueryRewriter {
 
       // Add any wildcard dictionary variables
       for (VariableWildcardQuery wildcardQuery : subquery.getDictVarWildcardQueries()) {
-        f = createStringColumnMatchFunction(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME, dictionaryVarsColumnName,
-            wildcardQueryToRegex(wildcardQuery.getQuery().toString()));
-        topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
+        String luceneQuery;
+        try {
+          luceneQuery = luceneQueryEncoder.encode(wildcardQuery.getQuery().toString());
+        } catch (IOException e) {
+          throw new SqlCompilationException("Failed to encode dictionary variable query into Lucene query.", e);
+        }
+        if (null != luceneQuery) {
+          f = createStringColumnMatchFunction(_TEXT_MATCH_LOWERCASE_FUNCTION_NAME, dictionaryVarsColumnName,
+              luceneQuery);
+          topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
+        }
       }
 
       // Add any wildcard encoded variables
@@ -379,7 +397,7 @@ public class ClpRewriter implements QueryRewriter {
                 Integer.toString(serializedEncodedVarWildcardQueries.size()).getBytes(StandardCharsets.ISO_8859_1));
             // TODO share this constant with clpEncodedVarsMatch
             serializedEncodedVarWildcardQueryEndIndexes.write(':');
-            ++wildcardEncodedVarIdx;
+            wildcardEncodedVarIdx++;
           }
         } catch (IOException e) {
           throw new SqlCompilationException(
@@ -425,11 +443,22 @@ public class ClpRewriter implements QueryRewriter {
     return topLevelFunction;
   }
 
-  private Function createLogtypeMatchFunction(String columnName, String query, boolean containsWildcards) {
+  private Function createLogtypeMatchFunction(String columnName, String query, boolean containsWildcards,
+      WildcardToLuceneQueryEncoder luceneQueryEncoder) {
     Function func;
     if (containsWildcards) {
-      func = createStringColumnMatchFunction(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME, columnName,
-          wildcardQueryToRegex(query));
+      String luceneQuery;
+      try {
+        luceneQuery = luceneQueryEncoder.encode(query);
+      } catch (IOException e) {
+        throw new SqlCompilationException("Failed to encode logtype query into a Lucene query.", e);
+      }
+      if (null != luceneQuery) {
+        func = createStringColumnMatchFunction(_TEXT_MATCH_LOWERCASE_FUNCTION_NAME, columnName, luceneQuery);
+      } else {
+        func = createStringColumnMatchFunction(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME, columnName,
+            wildcardQueryToRegex(query));
+      }
     } else {
       func = createStringColumnMatchFunction(SqlKind.EQUALS.name(), columnName, query);
     }
@@ -520,5 +549,218 @@ public class ClpRewriter implements QueryRewriter {
 
   private static boolean isWildcard(char c) {
     return '*' == c || '?' == c;
+  }
+
+  static class WildcardToLuceneQueryEncoder implements AutoCloseable {
+    private final StandardAnalyzer _luceneAnalyzer = new StandardAnalyzer();
+
+    private String encode(String wildcardQuery)
+        throws IOException {
+      // Get tokens by running Analyzer on query
+      List<Token> tokens = new ArrayList<>();
+      try (TokenStream tokenStream = _luceneAnalyzer.tokenStream("", wildcardQuery)) {
+        OffsetAttribute offsetAttr = tokenStream.addAttribute(OffsetAttribute.class);
+
+        tokenStream.reset();
+        while (tokenStream.incrementToken()) {
+          tokens.add(new Token(wildcardQuery, offsetAttr.startOffset(), offsetAttr.endOffset()));
+        }
+        tokenStream.end();
+      }
+      if (tokens.isEmpty()) {
+        return null;
+      }
+
+      // Extend tokens to include wildcards
+      int queryIdx = 0;
+      int tokenWithWildcardsBeginIdx = -1;
+      int tokenWithWildcardsEndIdx = -1;
+      List<LuceneQueryToken> tokensWithWildcards = new ArrayList<>();
+      boolean containsWildcards = false;
+      for (int tokenIdx = 0; tokenIdx < tokens.size(); tokenIdx++) {
+        Token token = tokens.get(tokenIdx);
+        int tokenBeginIdx = token.getBeginIdx();
+        int tokenEndIdx = token.getEndIdx();
+
+        if (tokenWithWildcardsEndIdx != tokenBeginIdx) {
+          if (-1 != tokenWithWildcardsBeginIdx) {
+            tokensWithWildcards.add(
+                new LuceneQueryToken(wildcardQuery, tokenWithWildcardsBeginIdx, tokenWithWildcardsEndIdx,
+                    containsWildcards));
+            containsWildcards = false;
+          }
+
+          tokenWithWildcardsBeginIdx = findWildcardGroupAdjacentBeforeIdx(wildcardQuery, queryIdx, tokenBeginIdx);
+          if (tokenBeginIdx != tokenWithWildcardsBeginIdx) {
+            containsWildcards = true;
+          }
+        }
+
+        int nextTokenBeginIdx;
+        if (tokenIdx + 1 < tokens.size()) {
+          nextTokenBeginIdx = tokens.get(tokenIdx + 1).getBeginIdx();
+        } else {
+          nextTokenBeginIdx = wildcardQuery.length();
+        }
+        tokenWithWildcardsEndIdx = findWildcardGroupAdjacentAfterIdx(wildcardQuery, tokenEndIdx, nextTokenBeginIdx);
+        if (tokenEndIdx != tokenWithWildcardsEndIdx) {
+          containsWildcards = true;
+        }
+
+        queryIdx = tokenWithWildcardsEndIdx;
+      }
+      tokensWithWildcards.add(
+          new LuceneQueryToken(wildcardQuery, tokenWithWildcardsBeginIdx, tokenWithWildcardsEndIdx, containsWildcards));
+
+      // Encode the query
+      StringBuilder stringBuilder = new StringBuilder();
+      for (int i = 0; i < tokensWithWildcards.size(); i++) {
+        LuceneQueryToken token = tokensWithWildcards.get(i);
+
+        if (i > 0) {
+          stringBuilder.append(" AND ");
+        }
+
+        if (token.containsWildcards()) {
+          token.encodeIntoLuceneRegex(stringBuilder);
+        } else {
+          token.encodeIntoLuceneQuery(stringBuilder);
+        }
+      }
+      return stringBuilder.toString();
+    }
+
+    @Override
+    public void close() {
+      _luceneAnalyzer.close();
+    }
+
+    private static int findWildcardGroupAdjacentBeforeIdx(String value, int searchBeginIdx, int searchEndIdx) {
+      boolean escaped = false;
+      int beginIdx = -1;
+      for (int i = searchBeginIdx; i < searchEndIdx; i++) {
+        char c = value.charAt(i);
+
+        if (escaped) {
+          escaped = false;
+        } else if ('\\' == c) {
+          escaped = true;
+
+          beginIdx = -1;
+        } else if (isWildcard(c)) {
+          if (-1 == beginIdx) {
+            beginIdx = i;
+          }
+        } else {
+          beginIdx = -1;
+        }
+      }
+
+      return -1 == beginIdx ? searchEndIdx : beginIdx;
+    }
+
+    public static int findWildcardGroupAdjacentAfterIdx(String value, int searchBeginIdx, int searchEndIdx) {
+      int endIdx = -1;
+      for (int i = searchBeginIdx; i < searchEndIdx; i++) {
+        char c = value.charAt(i);
+        if (isWildcard(c)) {
+          endIdx = i + 1;
+        } else {
+          break;
+        }
+      }
+
+      return -1 == endIdx ? searchBeginIdx : endIdx;
+    }
+  }
+
+  static class Token {
+    protected final int _beginIdx;
+    protected final int _endIdx;
+
+    protected final String _value;
+
+    public Token(String value, int beginIdx, int endIdx) {
+      _value = value;
+      _beginIdx = beginIdx;
+      _endIdx = endIdx;
+    }
+
+    public int getBeginIdx() {
+      return _beginIdx;
+    }
+
+    public int getEndIdx() {
+      return _endIdx;
+    }
+  }
+
+  static class LuceneQueryToken extends Token {
+    private static final char[] _LUCENE_REGEX_RESERVED_CHARS = {
+        '+', '-', '&', '|', '(', ')', '{', '}', '[', ']', '^', '"', '~', '\\', '<', '>', '.'
+    };
+    private static final char[] _LUCENE_QUERY_RESERVED_CHARS = {
+        '+', '-', '&', '|', '(', ')', '{', '}', '[', ']', '^', '"', '~', '*', '?', '\\', '!', ':', '/'
+    };
+
+    private final boolean _containsWildcards;
+
+    LuceneQueryToken(String query, int beginIdx, int endIdx, boolean containsWildcards) {
+      super(query, beginIdx, endIdx);
+      _containsWildcards = containsWildcards;
+    }
+
+    public boolean containsWildcards() {
+      return _containsWildcards;
+    }
+
+    public void encodeIntoLuceneRegex(StringBuilder stringBuilder) {
+      stringBuilder.append('/');
+
+      int unCopiedIdx = _beginIdx;
+      boolean escaped = false;
+      for (int queryIdx = _beginIdx; queryIdx < _endIdx; queryIdx++) {
+        char queryChar = _value.charAt(queryIdx);
+
+        if (!escaped && isWildcard(queryChar)) {
+          stringBuilder.append(_value, unCopiedIdx, queryIdx);
+          stringBuilder.append('.');
+          unCopiedIdx = queryIdx;
+        } else {
+          for (int i = 0; i < _LUCENE_REGEX_RESERVED_CHARS.length; i++) {
+            if (queryChar == _LUCENE_REGEX_RESERVED_CHARS[i]) {
+              stringBuilder.append(_value, unCopiedIdx, queryIdx);
+              stringBuilder.append('\\');
+              unCopiedIdx = queryIdx;
+              break;
+            }
+          }
+        }
+      }
+      if (unCopiedIdx < _endIdx) {
+        stringBuilder.append(_value, unCopiedIdx, _endIdx);
+      }
+
+      stringBuilder.append('/');
+    }
+
+    public void encodeIntoLuceneQuery(StringBuilder stringBuilder) {
+      int unCopiedIdx = _beginIdx;
+      for (int queryIdx = _beginIdx; queryIdx < _endIdx; queryIdx++) {
+        char queryChar = _value.charAt(queryIdx);
+
+        for (int i = 0; i < _LUCENE_QUERY_RESERVED_CHARS.length; i++) {
+          if (queryChar == _LUCENE_QUERY_RESERVED_CHARS[i]) {
+            stringBuilder.append(_value, unCopiedIdx, queryIdx);
+            stringBuilder.append('\\');
+            unCopiedIdx = queryIdx;
+            break;
+          }
+        }
+      }
+      if (unCopiedIdx < _endIdx) {
+        stringBuilder.append(_value, unCopiedIdx, _endIdx);
+      }
+    }
   }
 }
