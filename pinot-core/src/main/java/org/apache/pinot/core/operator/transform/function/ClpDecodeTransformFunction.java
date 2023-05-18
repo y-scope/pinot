@@ -21,7 +21,6 @@ package org.apache.pinot.core.operator.transform.function;
 import com.google.common.base.Preconditions;
 import com.yscope.clp.compressorfrontend.BuiltInVariableHandlingRuleVersions;
 import com.yscope.clp.compressorfrontend.MessageDecoder;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -104,9 +103,10 @@ public class ClpDecodeTransformFunction extends BaseTransformFunction {
     for (int i = 0; i < length; i++) {
       try {
         _stringValuesSV[i] = clpMessageDecoder.decodeMessage(logtypes[i], dictionaryVars[i], encodedVars[i]);
-      } catch (IOException ex) {
+      } catch (Exception ex) {
         LOGGER.error("Failed to decode CLP-encoded field.", ex);
-        _stringValuesSV[i] = null;
+        // TODO Change this to the actual default value
+        _stringValuesSV[i] = "null";
       }
     }
 
