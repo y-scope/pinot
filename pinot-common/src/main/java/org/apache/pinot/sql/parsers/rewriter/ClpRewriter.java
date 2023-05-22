@@ -284,6 +284,28 @@ public class ClpRewriter implements QueryRewriter {
 
   private void rewriteClpMatchFunction(Expression expression, String logtypeColumnName,
       String dictionaryVarsColumnName, String encodedVarsColumnName, String wildcardQuery) {
+    // Handle clpMatch sub-functions
+    boolean approx = false;
+    if (wildcardQuery.startsWith("$")) {
+      // Extract the name of the sub-function
+      int colonIdx = wildcardQuery.indexOf(':');
+      String clpMatchSubFunction = null;
+      if (-1 != colonIdx) {
+        clpMatchSubFunction = wildcardQuery.substring(1, colonIdx);
+      }
+
+      if (null != clpMatchSubFunction) {
+        wildcardQuery = wildcardQuery.substring(colonIdx + 1);
+        if (clpMatchSubFunction.equals("approx")) {
+          approx = true;
+        } else {
+          throw new SqlCompilationException("Unknown clpMatch sub-function: '" + clpMatchSubFunction + "'");
+        }
+      }
+    } else if (wildcardQuery.startsWith("\\$")) {
+      wildcardQuery = wildcardQuery.substring(1);
+    }
+
     EightByteClpWildcardQueryEncoder queryEncoder =
         new EightByteClpWildcardQueryEncoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
             BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
@@ -292,13 +314,14 @@ public class ClpRewriter implements QueryRewriter {
     Function subqueriesFunction;
     if (1 == subqueries.length) {
       subqueriesFunction =
-          convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subqueries[0]);
+          convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subqueries[0],
+              approx);
     } else {
       subqueriesFunction = new Function(SqlKind.OR.name());
 
       for (EightByteClpEncodedSubquery subquery : subqueries) {
         Function subqueryFunction =
-            convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery);
+            convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery, approx);
         if (null == subqueryFunction) {
           continue;
         }
@@ -329,18 +352,31 @@ public class ClpRewriter implements QueryRewriter {
 
     Function newFunction;
     if (null == subqueriesFunction) {
-      newFunction = clpDecodeLike;
+      if (!approx) {
+        newFunction = clpDecodeLike;
+      } else {
+        // Since we can't have an empty query, just do TEXT_MATCH(<ColumnGroup>_logtype>, '*')
+        newFunction = new Function(_TEXT_MATCH_LOWERCASE_FUNCTION_NAME);
+        newFunction.addToOperands(
+            new Expression(ExpressionType.IDENTIFIER).setIdentifier(new Identifier(logtypeColumnName)));
+        newFunction.addToOperands(
+            new Expression(ExpressionType.LITERAL).setLiteral(Literal.stringValue("*")));
+      }
     } else {
-      newFunction = new Function(SqlKind.AND.name());
-      newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueriesFunction));
-      newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(clpDecodeLike));
+      if (approx) {
+        newFunction = subqueriesFunction;
+      } else {
+        newFunction = new Function(SqlKind.AND.name());
+        newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueriesFunction));
+        newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(clpDecodeLike));
+      }
     }
 
     expression.setFunctionCall(newFunction);
   }
 
   private Function convertSubqueryToSql(String logtypeColumnName, String dictionaryVarsColumnName,
-      String encodedVarsColumnName, EightByteClpEncodedSubquery subquery) {
+      String encodedVarsColumnName, EightByteClpEncodedSubquery subquery, boolean approx) {
     Function topLevelFunction;
 
     if (!subquery.containsVariables()) {
@@ -394,60 +430,62 @@ public class ClpRewriter implements QueryRewriter {
       }
 
       // Add any wildcard encoded variables
-      int numEncodedVarWildcardQueries = subquery.getNumEncodedVarWildcardQueries();
-      if (numEncodedVarWildcardQueries > 0) {
-        byte[] encodedVarWildcardTypes = new byte[numEncodedVarWildcardQueries];
-        ByteArrayOutputStream serializedEncodedVarWildcardQueryEndIndexes = new ByteArrayOutputStream();
-        ByteArrayOutputStream serializedEncodedVarWildcardQueries = new ByteArrayOutputStream();
-        int wildcardEncodedVarIdx = 0;
-        try {
-          for (VariableWildcardQuery q : subquery.getEncodedVarWildcardQueries()) {
-            encodedVarWildcardTypes[wildcardEncodedVarIdx] = q.getType();
-            serializedEncodedVarWildcardQueries.write(q.getQuery().toByteArray());
-            serializedEncodedVarWildcardQueryEndIndexes.write(
-                Integer.toString(serializedEncodedVarWildcardQueries.size()).getBytes(StandardCharsets.ISO_8859_1));
-            // TODO share this constant with clpEncodedVarsMatch
-            serializedEncodedVarWildcardQueryEndIndexes.write(':');
-            wildcardEncodedVarIdx++;
+      if (!approx) {
+        int numEncodedVarWildcardQueries = subquery.getNumEncodedVarWildcardQueries();
+        if (numEncodedVarWildcardQueries > 0) {
+          byte[] encodedVarWildcardTypes = new byte[numEncodedVarWildcardQueries];
+          ByteArrayOutputStream serializedEncodedVarWildcardQueryEndIndexes = new ByteArrayOutputStream();
+          ByteArrayOutputStream serializedEncodedVarWildcardQueries = new ByteArrayOutputStream();
+          int wildcardEncodedVarIdx = 0;
+          try {
+            for (VariableWildcardQuery q : subquery.getEncodedVarWildcardQueries()) {
+              encodedVarWildcardTypes[wildcardEncodedVarIdx] = q.getType();
+              serializedEncodedVarWildcardQueries.write(q.getQuery().toByteArray());
+              serializedEncodedVarWildcardQueryEndIndexes.write(
+                  Integer.toString(serializedEncodedVarWildcardQueries.size()).getBytes(StandardCharsets.ISO_8859_1));
+              // TODO share this constant with clpEncodedVarsMatch
+              serializedEncodedVarWildcardQueryEndIndexes.write(':');
+              wildcardEncodedVarIdx++;
+            }
+          } catch (IOException e) {
+            throw new SqlCompilationException(
+                _CLPMATCH_LOWERCASE_FUNCTION_NAME + " Failed to serialize wildcard encoded variables in query.");
           }
-        } catch (IOException e) {
-          throw new SqlCompilationException(
-              _CLPMATCH_LOWERCASE_FUNCTION_NAME + " Failed to serialize wildcard encoded variables in query.");
+
+          // Add call to clpEncodedVarsMatch
+          Function clpEncodedVarsMatchCall =
+              new Function(TransformFunctionType.CLPENCODEDVARSMATCH.getName().toLowerCase());
+
+          Expression e = new Expression(ExpressionType.IDENTIFIER);
+          e.setIdentifier(new Identifier(logtypeColumnName));
+          clpEncodedVarsMatchCall.addToOperands(e);
+
+          e = new Expression(ExpressionType.IDENTIFIER);
+          e.setIdentifier(new Identifier(encodedVarsColumnName));
+          clpEncodedVarsMatchCall.addToOperands(e);
+
+          e = new Expression(ExpressionType.LITERAL);
+          e.setLiteral(Literal.stringValue(new String(encodedVarWildcardTypes, StandardCharsets.ISO_8859_1)));
+          clpEncodedVarsMatchCall.addToOperands(e);
+
+          e = new Expression(ExpressionType.LITERAL);
+          e.setLiteral(Literal.stringValue(serializedEncodedVarWildcardQueries.toString(StandardCharsets.ISO_8859_1)));
+          clpEncodedVarsMatchCall.addToOperands(e);
+
+          e = new Expression(ExpressionType.LITERAL);
+          // Delete the last ':'
+          byte[] serializedEncodedVarWildcardQueryEndIndexesByteArray =
+              serializedEncodedVarWildcardQueryEndIndexes.toByteArray();
+          e.setLiteral(Literal.stringValue(new String(serializedEncodedVarWildcardQueryEndIndexesByteArray, 0,
+              serializedEncodedVarWildcardQueryEndIndexesByteArray.length - 1, StandardCharsets.ISO_8859_1)));
+          clpEncodedVarsMatchCall.addToOperands(e);
+
+          f = new Function(SqlKind.EQUALS.name());
+          f.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(clpEncodedVarsMatchCall));
+          f.addToOperands(new Expression(ExpressionType.LITERAL).setLiteral(Literal.boolValue(true)));
+
+          topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
         }
-
-        // Add call to clpEncodedVarsMatch
-        Function clpEncodedVarsMatchCall =
-            new Function(TransformFunctionType.CLPENCODEDVARSMATCH.getName().toLowerCase());
-
-        Expression e = new Expression(ExpressionType.IDENTIFIER);
-        e.setIdentifier(new Identifier(logtypeColumnName));
-        clpEncodedVarsMatchCall.addToOperands(e);
-
-        e = new Expression(ExpressionType.IDENTIFIER);
-        e.setIdentifier(new Identifier(encodedVarsColumnName));
-        clpEncodedVarsMatchCall.addToOperands(e);
-
-        e = new Expression(ExpressionType.LITERAL);
-        e.setLiteral(Literal.stringValue(new String(encodedVarWildcardTypes, StandardCharsets.ISO_8859_1)));
-        clpEncodedVarsMatchCall.addToOperands(e);
-
-        e = new Expression(ExpressionType.LITERAL);
-        e.setLiteral(Literal.stringValue(serializedEncodedVarWildcardQueries.toString(StandardCharsets.ISO_8859_1)));
-        clpEncodedVarsMatchCall.addToOperands(e);
-
-        e = new Expression(ExpressionType.LITERAL);
-        // Delete the last ':'
-        byte[] serializedEncodedVarWildcardQueryEndIndexesByteArray =
-            serializedEncodedVarWildcardQueryEndIndexes.toByteArray();
-        e.setLiteral(Literal.stringValue(new String(serializedEncodedVarWildcardQueryEndIndexesByteArray, 0,
-            serializedEncodedVarWildcardQueryEndIndexesByteArray.length - 1, StandardCharsets.ISO_8859_1)));
-        clpEncodedVarsMatchCall.addToOperands(e);
-
-        f = new Function(SqlKind.EQUALS.name());
-        f.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(clpEncodedVarsMatchCall));
-        f.addToOperands(new Expression(ExpressionType.LITERAL).setLiteral(Literal.boolValue(true)));
-
-        topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
       }
 
       if (topLevelFunction.getOperands().size() == 0) {
