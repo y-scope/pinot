@@ -299,7 +299,13 @@ public class ClpRewriter implements QueryRewriter {
       for (EightByteClpEncodedSubquery subquery : subqueries) {
         Function subqueryFunction =
             convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery);
+        if (null == subqueryFunction) {
+          continue;
+        }
         subqueriesFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueryFunction));
+      }
+      if (subqueriesFunction.getOperands().size() == 0) {
+        subqueriesFunction = null;
       }
     }
 
@@ -321,9 +327,14 @@ public class ClpRewriter implements QueryRewriter {
     e.setLiteral(Literal.stringValue(wildcardQueryToRegex(wildcardQuery)));
     clpDecodeLike.addToOperands(e);
 
-    Function newFunction = new Function(SqlKind.AND.name());
-    newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueriesFunction));
-    newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(clpDecodeLike));
+    Function newFunction;
+    if (null == subqueriesFunction) {
+      newFunction = clpDecodeLike;
+    } else {
+      newFunction = new Function(SqlKind.AND.name());
+      newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueriesFunction));
+      newFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(clpDecodeLike));
+    }
 
     expression.setFunctionCall(newFunction);
   }
@@ -341,7 +352,9 @@ public class ClpRewriter implements QueryRewriter {
       // Add logtype query
       Function f = createLogtypeMatchFunction(logtypeColumnName, subquery.getLogtypeQueryAsString(),
           subquery.logtypeQueryContainsWildcards());
-      topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
+      if (null != f) {
+        topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
+      }
 
       // Add any dictionary variables
       for (ByteSegment dictVar : subquery.getDictVars()) {
@@ -436,6 +449,12 @@ public class ClpRewriter implements QueryRewriter {
 
         topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
       }
+
+      if (topLevelFunction.getOperands().size() == 0) {
+        // This can occur if the subquery only performs wildcard matches and none of them can be queried against the
+        // text index.
+        topLevelFunction = null;
+      }
     }
 
     return topLevelFunction;
@@ -453,8 +472,7 @@ public class ClpRewriter implements QueryRewriter {
       if (null != luceneQuery) {
         func = createStringColumnMatchFunction(_TEXT_MATCH_LOWERCASE_FUNCTION_NAME, columnName, luceneQuery);
       } else {
-        func = createStringColumnMatchFunction(_REGEXP_LIKE_LOWERCASE_FUNCTION_NAME, columnName,
-            wildcardQueryToRegex(query));
+        return null;
       }
     } else {
       func = createStringColumnMatchFunction(SqlKind.EQUALS.name(), columnName, query);
