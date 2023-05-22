@@ -75,6 +75,9 @@ public class ClpRewriter implements QueryRewriter {
   private static final char[] _NON_WILDCARD_REGEX_META_CHARACTERS =
       {'^', '$', '.', '{', '}', '[', ']', '(', ')', '+', '|', '<', '>', '-', '/', '=', '!'};
 
+  private static final WildcardToLuceneQueryEncoder _WILDCARD_TO_LUCENE_QUERY_ENCODER =
+      new WildcardToLuceneQueryEncoder();
+
   @Override
   public PinotQuery rewrite(PinotQuery pinotQuery) {
     List<Expression> selectExpressions = pinotQuery.getSelectList();
@@ -287,20 +290,16 @@ public class ClpRewriter implements QueryRewriter {
     EightByteClpEncodedSubquery[] subqueries = queryEncoder.encode(wildcardQuery);
 
     Function subqueriesFunction;
-    try (WildcardToLuceneQueryEncoder luceneQueryEncoder = new WildcardToLuceneQueryEncoder()) {
-      if (1 == subqueries.length) {
-        subqueriesFunction =
-            convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subqueries[0],
-                luceneQueryEncoder);
-      } else {
-        subqueriesFunction = new Function(SqlKind.OR.name());
+    if (1 == subqueries.length) {
+      subqueriesFunction =
+          convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subqueries[0]);
+    } else {
+      subqueriesFunction = new Function(SqlKind.OR.name());
 
-        for (EightByteClpEncodedSubquery subquery : subqueries) {
-          Function subqueryFunction =
-              convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery,
-                  luceneQueryEncoder);
-          subqueriesFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueryFunction));
-        }
+      for (EightByteClpEncodedSubquery subquery : subqueries) {
+        Function subqueryFunction =
+            convertSubqueryToSql(logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName, subquery);
+        subqueriesFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueryFunction));
       }
     }
 
@@ -330,19 +329,18 @@ public class ClpRewriter implements QueryRewriter {
   }
 
   private Function convertSubqueryToSql(String logtypeColumnName, String dictionaryVarsColumnName,
-      String encodedVarsColumnName, EightByteClpEncodedSubquery subquery,
-      WildcardToLuceneQueryEncoder luceneQueryEncoder) {
+      String encodedVarsColumnName, EightByteClpEncodedSubquery subquery) {
     Function topLevelFunction;
 
     if (!subquery.containsVariables()) {
       topLevelFunction = createLogtypeMatchFunction(logtypeColumnName, subquery.getLogtypeQueryAsString(),
-          subquery.logtypeQueryContainsWildcards(), luceneQueryEncoder);
+          subquery.logtypeQueryContainsWildcards());
     } else {
       topLevelFunction = new Function(SqlKind.AND.name());
 
       // Add logtype query
       Function f = createLogtypeMatchFunction(logtypeColumnName, subquery.getLogtypeQueryAsString(),
-          subquery.logtypeQueryContainsWildcards(), luceneQueryEncoder);
+          subquery.logtypeQueryContainsWildcards());
       topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
 
       // Add any dictionary variables
@@ -371,7 +369,7 @@ public class ClpRewriter implements QueryRewriter {
       for (VariableWildcardQuery wildcardQuery : subquery.getDictVarWildcardQueries()) {
         String luceneQuery;
         try {
-          luceneQuery = luceneQueryEncoder.encode(wildcardQuery.getQuery().toString());
+          luceneQuery = _WILDCARD_TO_LUCENE_QUERY_ENCODER.encode(wildcardQuery.getQuery().toString());
         } catch (IOException e) {
           throw new SqlCompilationException("Failed to encode dictionary variable query into Lucene query.", e);
         }
@@ -443,13 +441,12 @@ public class ClpRewriter implements QueryRewriter {
     return topLevelFunction;
   }
 
-  private Function createLogtypeMatchFunction(String columnName, String query, boolean containsWildcards,
-      WildcardToLuceneQueryEncoder luceneQueryEncoder) {
+  private Function createLogtypeMatchFunction(String columnName, String query, boolean containsWildcards) {
     Function func;
     if (containsWildcards) {
       String luceneQuery;
       try {
-        luceneQuery = luceneQueryEncoder.encode(query);
+        luceneQuery = _WILDCARD_TO_LUCENE_QUERY_ENCODER.encode(query);
       } catch (IOException e) {
         throw new SqlCompilationException("Failed to encode logtype query into a Lucene query.", e);
       }
