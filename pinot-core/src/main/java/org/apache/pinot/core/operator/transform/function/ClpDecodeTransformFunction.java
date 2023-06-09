@@ -32,15 +32,20 @@ import org.apache.pinot.spi.data.FieldSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.pinot.spi.data.FieldSpec.DEFAULT_DIMENSION_NULL_VALUE_OF_STRING;
+
 
 /**
- * Decodes a CLP-encoded column group into the original values.
+ * Decodes a CLP-encoded column group into the original value. In Pinot, a CLP-encoded field is encoded into three
+ * Pinot columns, what we collectively refer to as a column group. E.g., A CLP-encoded "message" field would be
+ * stored in three columns: "message_logtype", "message_dictionaryVars", and "message_encodedVars".
  * <p>
- * Syntax:
+ * Usage:
  * <pre>
  *   clpDecode("columnGroupName_logtype", "columnGroupName_dictionaryVars",
- *             "columnGroupName_encodedVars")
+ *             "columnGroupName_encodedVars"[, defaultValue])
  * </pre>
+ * The "defaultValue" is optional and is used when a column group can't be decoded for some reason.
  * <p>
  * Sample queries
  * <pre>
@@ -53,6 +58,7 @@ import org.slf4j.LoggerFactory;
 public class ClpDecodeTransformFunction extends BaseTransformFunction {
   private static final Logger LOGGER = LoggerFactory.getLogger(ClpDecodeTransformFunction.class);
   private final List<TransformFunction> _transformFunctions = new ArrayList<>();
+  private String _defaultValue = DEFAULT_DIMENSION_NULL_VALUE_OF_STRING;
 
   /**
    * @return The (globally-unique) name of the transform function
@@ -64,14 +70,24 @@ public class ClpDecodeTransformFunction extends BaseTransformFunction {
 
   @Override
   public void init(List<TransformFunction> arguments, Map<String, DataSource> dataSourceMap) {
-    Preconditions.checkArgument(arguments.size() == 3,
-        "Syntax error: After rewriting, clpDecode takes three arguments - "
-            + "clpDecode(ColumnGroupName_logtype, ColumnGroupName_dictionaryVars, ColumnGroupName_encodedVars)");
+    int numArgs = arguments.size();
+    Preconditions.checkArgument(3 == numArgs || 4 == numArgs,
+        "Syntax error: After rewriting, clpDecode takes 3 or 4 arguments - "
+            + "clpDecode(ColumnGroupName_logtype, ColumnGroupName_dictionaryVars, ColumnGroupName_encodedVars, "
+            + "defaultValue)");
 
-    for (TransformFunction f : arguments) {
+    int i;
+    for (i = 0; i < 3; i++) {
+      TransformFunction f = arguments.get(i);
       Preconditions.checkArgument(f instanceof IdentifierTransformFunction,
-          "Argument must be a column name (identifier)");
+          "Argument " + i + " must be a column name (identifier)");
       _transformFunctions.add(f);
+    }
+    if (i < numArgs) {
+      TransformFunction f = arguments.get(i++);
+      Preconditions.checkArgument(f instanceof LiteralTransformFunction,
+          "Argument " + i + " must be a default value (literal)");
+      _defaultValue = ((LiteralTransformFunction) f).getLiteral();
     }
   }
 
@@ -105,8 +121,7 @@ public class ClpDecodeTransformFunction extends BaseTransformFunction {
         _stringValuesSV[i] = clpMessageDecoder.decodeMessage(logtypes[i], dictionaryVars[i], encodedVars[i]);
       } catch (Exception ex) {
         LOGGER.error("Failed to decode CLP-encoded field.", ex);
-        // TODO Change this to the actual default value
-        _stringValuesSV[i] = "null";
+        _stringValuesSV[i] = _defaultValue;
       }
     }
 
