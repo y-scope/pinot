@@ -19,6 +19,7 @@
 package org.apache.pinot.segment.local.recordtransformer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +29,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.table.TableConfig;
 import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
+import org.apache.pinot.spi.data.FieldSpec;
 import org.apache.pinot.spi.data.FieldSpec.DataType;
 import org.apache.pinot.spi.data.Schema;
 import org.apache.pinot.spi.data.readers.GenericRow;
@@ -62,17 +64,30 @@ public class JsonLogTransformer implements RecordTransformer {
       return;
     }
 
+    // TODO handle continueOnError and use INCOMPLETE_RECORD_KEY
+
+    // TODO validate preconditions
     JsonLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
     _jsonDataFieldName = jsonLogTransformerConfig.getJsonDataField();
-    _jsonDataFieldType = schema.getFieldSpecFor(_jsonDataFieldName).getDataType();
+    _jsonDataFieldType = null == _jsonDataFieldName ? null : getAndValidateJsonFieldType(schema, _jsonDataFieldName);
     _jsonDataNoIndexFieldName = jsonLogTransformerConfig.getJsonDataNoIndexField();
-    _jsonDataNoIndexFieldType = schema.getFieldSpecFor(_jsonDataNoIndexFieldName).getDataType();
+    _jsonDataNoIndexFieldType =
+        null == _jsonDataNoIndexFieldName ? null : getAndValidateJsonFieldType(schema, _jsonDataNoIndexFieldName);
     _jsonDataNoIndexSuffix = jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
     _fieldPathsToDrop = jsonLogTransformerConfig.getFieldPathsToDrop();
 
     _rootLevelFields = new HashSet<>();
     _nestedFields = new HashMap<>();
     initializeFields(schema.getPhysicalColumnNames());
+  }
+
+  private DataType getAndValidateJsonFieldType (Schema schema, String fieldName) {
+    FieldSpec fieldSpec = schema.getFieldSpecFor(fieldName);
+    Preconditions.checkState(null != fieldSpec, "Field '%s' doesn't exist in schema", fieldName);
+    DataType fieldDataType = fieldSpec.getDataType();
+    Preconditions.checkState(DataType.JSON == fieldDataType || DataType.STRING == fieldDataType,
+        "Field '%s' has unsupported type %s", fieldDataType.toString());
+    return fieldDataType;
   }
 
   /**
@@ -115,8 +130,9 @@ public class JsonLogTransformer implements RecordTransformer {
         outputRecord.putValue(recordKey, recordValue);
       } else if (_nestedFields.containsKey(recordKey)) {
         if (!(recordValue instanceof Map)) {
-          _logger.error("Schema mismatch: Expected {} in record to be a map, but it's a {}. Fall-back to storing in "
-                  + "jsonData", recordKey, recordValue.getClass().getName());
+          _logger.error("Schema mismatch: Expected {} in record to be a map, but it's a {}. Falling back to storing in "
+                  + "{}", recordKey, recordValue.getClass().getName(), _jsonDataFieldName);
+          jsonDataContainer.addEntry(recordKey, recordValue);
           continue;
         }
 
@@ -146,7 +162,7 @@ public class JsonLogTransformer implements RecordTransformer {
    * Initializes the root-level and nested fields based on the fields requested by the caller. Nested fields are
    * converted from dot notation (e.g., "k1.k2.k3") to nested objects (e.g., {k1: {k2: {k3: null}}}) so that input
    * records can be efficiently transformed to match the given fields.
-   * <p></p>
+   * <p>
    * NOTE: This method doesn't handle keys with escaped separators (e.g., "par\.ent" in "par\.ent.child")
    * @param fields The fields to extract from input records
    */
@@ -155,30 +171,32 @@ public class JsonLogTransformer implements RecordTransformer {
     for (String field : fields) {
       int keySeparatorOffset = field.indexOf(JsonUtils.KEY_SEPARATOR);
       if (-1 == keySeparatorOffset) {
+        // Key contains no separator so it must be a root level field
         _rootLevelFields.add(field);
-      } else {
-        subKeys.clear();
-        if (!getAndValidateSubKeys(field, keySeparatorOffset, subKeys)) {
-          continue;
-        }
-
-        // Add all sub-keys except the leaf to _nestedFields
-        Map<String, Object> parent = _nestedFields;
-        for (int i = 0; i < subKeys.size() - 1; i++) {
-          String subKey = subKeys.get(i);
-
-          Map<String, Object> child;
-          if (parent.containsKey(subKey)) {
-            child = (Map<String, Object>) parent.get(subKey);
-          } else {
-            child = new HashMap<>();
-            parent.put(subKey, child);
-          }
-          parent = child;
-        }
-        // Add the leaf pointing at null
-        parent.put(subKeys.get(subKeys.size() - 1), null);
+        continue;
       }
+
+      subKeys.clear();
+      if (!getAndValidateSubKeys(field, keySeparatorOffset, subKeys)) {
+        continue;
+      }
+
+      // Add all sub-keys except the leaf to _nestedFields
+      Map<String, Object> parent = _nestedFields;
+      for (int i = 0; i < subKeys.size() - 1; i++) {
+        String subKey = subKeys.get(i);
+
+        Map<String, Object> child;
+        if (parent.containsKey(subKey)) {
+          child = (Map<String, Object>) parent.get(subKey);
+        } else {
+          child = new HashMap<>();
+          parent.put(subKey, child);
+        }
+        parent = child;
+      }
+      // Add the leaf pointing at null
+      parent.put(subKeys.get(subKeys.size() - 1), null);
     }
   }
 

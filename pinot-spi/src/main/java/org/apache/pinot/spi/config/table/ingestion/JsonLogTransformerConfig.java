@@ -21,6 +21,7 @@ package org.apache.pinot.spi.config.table.ingestion;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
+import com.google.common.base.Preconditions;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.BaseJsonConfig;
@@ -44,6 +45,7 @@ public class JsonLogTransformerConfig extends BaseJsonConfig {
       @JsonProperty("jsonDataNoIndexSuffix") @Nullable String jsonDataNoIndexSuffix,
       @JsonProperty("fieldPathsToDrop") @Nullable Set<String> fieldPathsToDrop) {
     _jsonDataField = jsonDataField;
+    // TODO validate if one of these is set, the other is as well
     _jsonDataNoIndexField = jsonDataNoIndexField;
     _jsonDataNoIndexSuffix = jsonDataNoIndexSuffix;
     _fieldPathsToDrop = fieldPathsToDrop;
