@@ -488,7 +488,7 @@ public class ClpRewriter implements QueryRewriter {
         }
       }
 
-      if (topLevelFunction.getOperands().size() == 0) {
+      if (topLevelFunction.getOperandsSize() == 0) {
         // This can occur if the subquery only performs wildcard matches and none of them can be queried against the
         // text index.
         topLevelFunction = null;
