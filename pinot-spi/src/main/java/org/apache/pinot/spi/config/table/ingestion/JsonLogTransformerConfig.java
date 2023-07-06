@@ -26,7 +26,7 @@ import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.BaseJsonConfig;
 
 
-public class JSONLogTransformerConfig extends BaseJsonConfig {
+public class JsonLogTransformerConfig extends BaseJsonConfig {
   @JsonPropertyDescription("Name of the field that should contain extra fields that are not part of the schema.")
   private final String _indexableExtrasField;
 
@@ -41,7 +41,7 @@ public class JSONLogTransformerConfig extends BaseJsonConfig {
   private final Set<String> _fieldPathsToDrop;
 
   @JsonCreator
-  public JSONLogTransformerConfig(@JsonProperty("indexableExtrasField") @Nullable String indexableExtrasField,
+  public JsonLogTransformerConfig(@JsonProperty("indexableExtrasField") @Nullable String indexableExtrasField,
       @JsonProperty("unindexableExtrasField") @Nullable String unindexableExtrasField,
       @JsonProperty("unindexableFieldSuffix") @Nullable String unindexableFieldSuffix,
       @JsonProperty("fieldPathsToDrop") @Nullable Set<String> fieldPathsToDrop) {

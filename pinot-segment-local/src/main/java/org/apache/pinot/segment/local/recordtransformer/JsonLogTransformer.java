@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.table.TableConfig;
-import org.apache.pinot.spi.config.table.ingestion.JSONLogTransformerConfig;
+import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
 import org.apache.pinot.spi.data.FieldSpec.DataType;
 import org.apache.pinot.spi.data.Schema;
 import org.apache.pinot.spi.data.readers.GenericRow;
@@ -37,8 +37,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class JSONLogTransformer implements RecordTransformer {
-  private static final Logger _logger = LoggerFactory.getLogger(JSONLogTransformer.class);
+public class JsonLogTransformer implements RecordTransformer {
+  private static final Logger _logger = LoggerFactory.getLogger(JsonLogTransformer.class);
 
   private final String _indexableExtrasFieldName;
   private final DataType _indexableExtrasFieldType;
@@ -50,9 +50,9 @@ public class JSONLogTransformer implements RecordTransformer {
   private Set<String> _rootLevelFields;
   private Map<String, Object> _nestedFields;
 
-  public JSONLogTransformer(TableConfig tableConfig, Schema schema) {
+  public JsonLogTransformer(TableConfig tableConfig, Schema schema) {
     if (null == tableConfig.getIngestionConfig() || null == tableConfig.getIngestionConfig()
-        .getJSONLogTransformerConfig()) {
+        .getJsonLogTransformerConfig()) {
       _indexableExtrasFieldName = null;
       _indexableExtrasFieldType = null;
       _unindexableExtrasFieldName = null;
@@ -62,7 +62,7 @@ public class JSONLogTransformer implements RecordTransformer {
       return;
     }
 
-    JSONLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJSONLogTransformerConfig();
+    JsonLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
     _indexableExtrasFieldName = jsonLogTransformerConfig.getIndexableExtrasField();
     _indexableExtrasFieldType = schema.getFieldSpecFor(_indexableExtrasFieldName).getDataType();
     _unindexableExtrasFieldName = jsonLogTransformerConfig.getUnindexableExtrasField();

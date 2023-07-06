@@ -67,7 +67,7 @@ import org.apache.pinot.spi.config.table.ingestion.BatchIngestionConfig;
 import org.apache.pinot.spi.config.table.ingestion.ComplexTypeConfig;
 import org.apache.pinot.spi.config.table.ingestion.FilterConfig;
 import org.apache.pinot.spi.config.table.ingestion.IngestionConfig;
-import org.apache.pinot.spi.config.table.ingestion.JSONLogTransformerConfig;
+import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
 import org.apache.pinot.spi.config.table.ingestion.StreamIngestionConfig;
 import org.apache.pinot.spi.config.table.ingestion.TransformConfig;
 import org.apache.pinot.spi.data.FieldSpec;
@@ -452,7 +452,7 @@ public final class TableConfigUtils {
         }
       }
 
-      JSONLogTransformerConfig jsonLogTransformerConfig = ingestionConfig.getJSONLogTransformerConfig();
+      JsonLogTransformerConfig jsonLogTransformerConfig = ingestionConfig.getJsonLogTransformerConfig();
       if (null != jsonLogTransformerConfig) {
         String indexableExtrasField = jsonLogTransformerConfig.getIndexableExtrasField();
         String unindexableExtrasField = jsonLogTransformerConfig.getUnindexableExtrasField();
