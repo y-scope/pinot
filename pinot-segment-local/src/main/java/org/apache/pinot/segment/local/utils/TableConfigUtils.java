@@ -67,6 +67,7 @@ import org.apache.pinot.spi.config.table.ingestion.BatchIngestionConfig;
 import org.apache.pinot.spi.config.table.ingestion.ComplexTypeConfig;
 import org.apache.pinot.spi.config.table.ingestion.FilterConfig;
 import org.apache.pinot.spi.config.table.ingestion.IngestionConfig;
+import org.apache.pinot.spi.config.table.ingestion.JSONLogTransformerConfig;
 import org.apache.pinot.spi.config.table.ingestion.StreamIngestionConfig;
 import org.apache.pinot.spi.config.table.ingestion.TransformConfig;
 import org.apache.pinot.spi.data.FieldSpec;
@@ -447,6 +448,28 @@ public final class TableConfigUtils {
                   "Fields in the schema may not begin with any prefix specified in the prefixesToRename"
                       + " config. Name conflict with field: " + field + " and prefix: " + prefix);
             }
+          }
+        }
+      }
+
+      JSONLogTransformerConfig jsonLogTransformerConfig = ingestionConfig.getJSONLogTransformerConfig();
+      if (null != jsonLogTransformerConfig) {
+        String indexableExtrasField = jsonLogTransformerConfig.getIndexableExtrasField();
+        String unindexableExtrasField = jsonLogTransformerConfig.getUnindexableExtrasField();
+        String unindexableFieldSuffix = jsonLogTransformerConfig.getUnindexableFieldSuffix();
+        Preconditions.checkArgument((null == unindexableExtrasField && null == unindexableFieldSuffix)
+                || (null != unindexableExtrasField && null != unindexableFieldSuffix),
+            "unindexableExtrasField and unindexableFieldSuffix must be set together");
+        if (null != schema) {
+          if (null != indexableExtrasField) {
+            DataType fieldType = schema.getFieldSpecFor(indexableExtrasField).getDataType();
+            Preconditions.checkArgument(DataType.STRING == fieldType || DataType.JSON == fieldType,
+                "indexableExtras field must be of type STRING or JSON");
+          }
+          if (null != unindexableExtrasField) {
+            DataType fieldType = schema.getFieldSpecFor(indexableExtrasField).getDataType();
+            Preconditions.checkArgument(DataType.STRING == fieldType || DataType.JSON == fieldType,
+                "unindexableExtras field must be of type STRING or JSON");
           }
         }
       }
