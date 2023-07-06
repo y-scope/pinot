@@ -38,7 +38,7 @@ import org.apache.pinot.spi.data.FieldSpec.DataType;
  */
 public class SingleValueVarByteRawIndexCreator implements ForwardIndexCreator {
   private static final int DEFAULT_NUM_DOCS_PER_CHUNK = 1000;
-  private static final int TARGET_MAX_CHUNK_SIZE = 1024 * 1024;
+  private static final int TARGET_MAX_CHUNK_SIZE = 8 * 1024 * 1024;
 
   private final VarByteChunkWriter _indexWriter;
   private final DataType _valueType;
