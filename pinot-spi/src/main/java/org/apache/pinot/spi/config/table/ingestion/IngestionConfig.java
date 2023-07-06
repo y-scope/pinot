@@ -46,7 +46,7 @@ public class IngestionConfig extends BaseJsonConfig {
   private ComplexTypeConfig _complexTypeConfig;
 
   @JsonPropertyDescription("Config related to handling JSON log transformations")
-  private JsonLogTransformerConfig _jsonLogTransformerConfig;
+  private JSONLogTransformerConfig _jsonLogTransformerConfig;
 
   @JsonPropertyDescription("Configs related to record aggregation function applied during ingestion")
   private List<AggregationConfig> _aggregationConfigs;
@@ -64,7 +64,7 @@ public class IngestionConfig extends BaseJsonConfig {
   public IngestionConfig(@Nullable BatchIngestionConfig batchIngestionConfig,
       @Nullable StreamIngestionConfig streamIngestionConfig, @Nullable FilterConfig filterConfig,
       @Nullable List<TransformConfig> transformConfigs, @Nullable ComplexTypeConfig complexTypeConfig,
-      @Nullable JsonLogTransformerConfig jsonLogTransformerConfig,
+      @Nullable JSONLogTransformerConfig jsonLogTransformerConfig,
       @Nullable List<AggregationConfig> aggregationConfigs) {
     _batchIngestionConfig = batchIngestionConfig;
     _streamIngestionConfig = streamIngestionConfig;
@@ -104,7 +104,7 @@ public class IngestionConfig extends BaseJsonConfig {
   }
 
   @Nullable
-  public JsonLogTransformerConfig getJsonLogTransformerConfig() {
+  public JSONLogTransformerConfig getJSONLogTransformerConfig() {
     return _jsonLogTransformerConfig;
   }
 
@@ -145,7 +145,7 @@ public class IngestionConfig extends BaseJsonConfig {
     _complexTypeConfig = complexTypeConfig;
   }
 
-  public void setJsonLogTransformerConfig(JsonLogTransformerConfig jsonLogTransformerConfig) {
+  public void setJSONLogTransformerConfig(JSONLogTransformerConfig jsonLogTransformerConfig) {
     _jsonLogTransformerConfig = jsonLogTransformerConfig;
   }
 

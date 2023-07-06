@@ -25,43 +25,45 @@ import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.BaseJsonConfig;
 
-public class JsonLogTransformerConfig extends BaseJsonConfig {
-  @JsonPropertyDescription("Name of the JSON field that should contain extra fields that are not part of the schema.")
-  private final String _jsonDataField;
 
-  @JsonPropertyDescription("Like jsonData except it only contains fields with the suffix in jsonDataNoIndexSuffix.")
-  private final String _jsonDataNoIndexField;
+public class JSONLogTransformerConfig extends BaseJsonConfig {
+  @JsonPropertyDescription("Name of the field that should contain extra fields that are not part of the schema.")
+  private final String _indexableExtrasField;
 
-  @JsonPropertyDescription("The suffix to use with jsonDataNoIndex")
-  private final String _jsonDataNoIndexSuffix;
+  @JsonPropertyDescription(
+      "Like indexableExtrasField except it only contains fields with the suffix in unindexableFieldSuffix.")
+  private final String _unindexableExtrasField;
+
+  @JsonPropertyDescription("The suffix of fields that must be stored in unindexableExtrasField")
+  private final String _unindexableFieldSuffix;
 
   @JsonPropertyDescription("Array of field paths to drop")
   private final Set<String> _fieldPathsToDrop;
 
   @JsonCreator
-  public JsonLogTransformerConfig(@JsonProperty("jsonDataField") @Nullable String jsonDataField,
-      @JsonProperty("jsonDataNoIndexField") @Nullable String jsonDataNoIndexField,
-      @JsonProperty("jsonDataNoIndexSuffix") @Nullable String jsonDataNoIndexSuffix,
+  public JSONLogTransformerConfig(@JsonProperty("indexableExtrasField") @Nullable String indexableExtrasField,
+      @JsonProperty("unindexableExtrasField") @Nullable String unindexableExtrasField,
+      @JsonProperty("unindexableFieldSuffix") @Nullable String unindexableFieldSuffix,
       @JsonProperty("fieldPathsToDrop") @Nullable Set<String> fieldPathsToDrop) {
-    _jsonDataField = jsonDataField;
-    _jsonDataNoIndexField = jsonDataNoIndexField;
-    _jsonDataNoIndexSuffix = jsonDataNoIndexSuffix;
+    _indexableExtrasField = indexableExtrasField;
+    _unindexableExtrasField = unindexableExtrasField;
+    _unindexableFieldSuffix = unindexableFieldSuffix;
     _fieldPathsToDrop = fieldPathsToDrop;
   }
 
   @Nullable
-  public String getJsonDataField() {
-    return _jsonDataField;
+  public String getIndexableExtrasField() {
+    return _indexableExtrasField;
   }
 
   @Nullable
-  public String getJsonDataNoIndexField() {
-    return _jsonDataNoIndexField;
+  public String getUnindexableExtrasField() {
+    return _unindexableExtrasField;
   }
 
   @Nullable
-  public String getJsonDataNoIndexSuffix() {
-    return _jsonDataNoIndexSuffix;
+  public String getUnindexableFieldSuffix() {
+    return _unindexableFieldSuffix;
   }
 
   @Nullable

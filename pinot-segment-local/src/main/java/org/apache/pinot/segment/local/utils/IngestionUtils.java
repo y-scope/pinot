@@ -307,8 +307,8 @@ public final class IngestionUtils {
    * are not in the schema.
    */
   public static Set<String> getFieldsForRecordExtractor(@Nullable IngestionConfig ingestionConfig, Schema schema) {
-    if (null != ingestionConfig && null != ingestionConfig.getJsonLogTransformerConfig()) {
-      // The JsonLogTransformer requires that all fields are extracted, indicated by returning
+    if (null != ingestionConfig && null != ingestionConfig.getJSONLogTransformerConfig()) {
+      // The JSONLogTransformer requires that all fields are extracted, indicated by returning
       // null here. Extracting all fields should be a superset of any fields that would've been
       // extracted otherwise.
       return null;

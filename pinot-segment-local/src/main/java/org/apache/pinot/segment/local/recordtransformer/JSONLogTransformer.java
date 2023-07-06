@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.table.TableConfig;
-import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
+import org.apache.pinot.spi.config.table.ingestion.JSONLogTransformerConfig;
 import org.apache.pinot.spi.data.FieldSpec.DataType;
 import org.apache.pinot.spi.data.Schema;
 import org.apache.pinot.spi.data.readers.GenericRow;
@@ -37,37 +37,37 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
-public class JsonLogTransformer implements RecordTransformer {
-  private static final Logger _logger = LoggerFactory.getLogger(JsonLogTransformer.class);
+public class JSONLogTransformer implements RecordTransformer {
+  private static final Logger _logger = LoggerFactory.getLogger(JSONLogTransformer.class);
 
-  private final String _jsonDataFieldName;
-  private final DataType _jsonDataFieldType;
-  private final String _jsonDataNoIndexFieldName;
-  private final DataType _jsonDataNoIndexFieldType;
-  private final String _jsonDataNoIndexSuffix;
+  private final String _indexableExtrasFieldName;
+  private final DataType _indexableExtrasFieldType;
+  private final String _unindexableExtrasFieldName;
+  private final DataType _unindexableExtrasFieldType;
+  private final String _unindexableFieldSuffix;
   private final Set<String> _fieldPathsToDrop;
 
   private Set<String> _rootLevelFields;
   private Map<String, Object> _nestedFields;
 
-  public JsonLogTransformer(TableConfig tableConfig, Schema schema) {
-    if (null == tableConfig.getIngestionConfig()
-        || null == tableConfig.getIngestionConfig().getJsonLogTransformerConfig()) {
-      _jsonDataFieldName = null;
-      _jsonDataFieldType = null;
-      _jsonDataNoIndexFieldName = null;
-      _jsonDataNoIndexFieldType = null;
-      _jsonDataNoIndexSuffix = null;
+  public JSONLogTransformer(TableConfig tableConfig, Schema schema) {
+    if (null == tableConfig.getIngestionConfig() || null == tableConfig.getIngestionConfig()
+        .getJSONLogTransformerConfig()) {
+      _indexableExtrasFieldName = null;
+      _indexableExtrasFieldType = null;
+      _unindexableExtrasFieldName = null;
+      _unindexableExtrasFieldType = null;
+      _unindexableFieldSuffix = null;
       _fieldPathsToDrop = null;
       return;
     }
 
-    JsonLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
-    _jsonDataFieldName = jsonLogTransformerConfig.getJsonDataField();
-    _jsonDataFieldType = schema.getFieldSpecFor(_jsonDataFieldName).getDataType();
-    _jsonDataNoIndexFieldName = jsonLogTransformerConfig.getJsonDataNoIndexField();
-    _jsonDataNoIndexFieldType = schema.getFieldSpecFor(_jsonDataNoIndexFieldName).getDataType();
-    _jsonDataNoIndexSuffix = jsonLogTransformerConfig.getJsonDataNoIndexSuffix();
+    JSONLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJSONLogTransformerConfig();
+    _indexableExtrasFieldName = jsonLogTransformerConfig.getIndexableExtrasField();
+    _indexableExtrasFieldType = schema.getFieldSpecFor(_indexableExtrasFieldName).getDataType();
+    _unindexableExtrasFieldName = jsonLogTransformerConfig.getUnindexableExtrasField();
+    _unindexableExtrasFieldType = schema.getFieldSpecFor(_unindexableExtrasFieldName).getDataType();
+    _unindexableFieldSuffix = jsonLogTransformerConfig.getUnindexableFieldSuffix();
     _fieldPathsToDrop = jsonLogTransformerConfig.getFieldPathsToDrop();
 
     _rootLevelFields = new HashSet<>();
@@ -80,7 +80,7 @@ public class JsonLogTransformer implements RecordTransformer {
    */
   @Override
   public boolean isNoOp() {
-    return null == _jsonDataFieldName && null == _jsonDataNoIndexFieldName;
+    return null == _indexableExtrasFieldName && null == _unindexableExtrasFieldName;
   }
 
   /**
@@ -93,16 +93,18 @@ public class JsonLogTransformer implements RecordTransformer {
   public GenericRow transform(GenericRow record) {
     GenericRow outputRecord = new GenericRow();
 
-    JsonDataContainer jsonDataContainer = new JsonDataContainer(null != _jsonDataFieldName,
-        null != _jsonDataNoIndexFieldName, _jsonDataNoIndexSuffix);
+    ExtraFieldsContainer extraFieldsContainer =
+        new ExtraFieldsContainer(null != _indexableExtrasFieldName, null != _unindexableExtrasFieldName,
+            _unindexableFieldSuffix);
 
     // Process all fields of the input record. There are 4 cases:
     // 1. The field is at the root-level and is in the table's schema.
     // 2. The field is special (e.g., "__metadata$...") and should be passed through unchanged.
     // 3. The field is nested (e.g. a.b.c) and the the field's common root-level ancestor (e.g. a) is in the table's
     //    schema; we must recurse until we get to the leaf sub-key to see if the field indeed needs extracting.
-    // 4. The field is in no other category and it must be stored in jsonData (if it's set)
-    JsonDataContainer childJsonDataContainer = new JsonDataContainer(jsonDataContainer);
+    // 4. The field is in no other category and it must be stored in indexableExtrasField (if it's
+    //    set)
+    ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(extraFieldsContainer);
     for (Map.Entry<String, Object> recordEntry : record.getFieldToValueMap().entrySet()) {
       String recordKey = recordEntry.getKey();
       Object recordValue = recordEntry.getValue();
@@ -116,29 +118,29 @@ public class JsonLogTransformer implements RecordTransformer {
       } else if (_nestedFields.containsKey(recordKey)) {
         if (!(recordValue instanceof Map)) {
           _logger.error("Schema mismatch: Expected {} in record to be a map, but it's a {}. Fall-back to storing in "
-                  + "jsonData", recordKey, recordValue.getClass().getName());
+              + "indexableExtrasField", recordKey, recordValue.getClass().getName());
           continue;
         }
 
-        childJsonDataContainer.initFromParent(jsonDataContainer, recordKey);
+        childExtraFieldsContainer.initFromParent(extraFieldsContainer, recordKey);
         processNestedFieldInRecord(recordKey, (Map<String, Object>) _nestedFields.get(recordKey),
-            (Map<String, Object>) recordValue, outputRecord, childJsonDataContainer);
-        jsonDataContainer.addChild(recordKey, childJsonDataContainer);
+            (Map<String, Object>) recordValue, outputRecord, childExtraFieldsContainer);
+        extraFieldsContainer.addChild(recordKey, childExtraFieldsContainer);
       } else {
-        jsonDataContainer.addEntry(recordKey, recordValue);
+        extraFieldsContainer.addEntry(recordKey, recordValue);
       }
     }
 
-    putJsonField(_jsonDataFieldName, _jsonDataFieldType, jsonDataContainer.getJsonData(), outputRecord);
-    putJsonField(_jsonDataNoIndexFieldName, _jsonDataNoIndexFieldType, jsonDataContainer.getJsonDataNoIndex(),
+    putExtraField(_indexableExtrasFieldName, _indexableExtrasFieldType, extraFieldsContainer.getIndexableExtras(),
+        outputRecord);
+    putExtraField(_unindexableExtrasFieldName, _unindexableExtrasFieldType, extraFieldsContainer.getUnindexableExtras(),
         outputRecord);
 
     return outputRecord;
   }
 
   private boolean isSpecialField(String field) {
-    return (field.equals(StreamDataDecoderImpl.KEY)
-        || field.startsWith(StreamDataDecoderImpl.HEADER_KEY_PREFIX)
+    return (field.equals(StreamDataDecoderImpl.KEY) || field.startsWith(StreamDataDecoderImpl.HEADER_KEY_PREFIX)
         || field.startsWith(StreamDataDecoderImpl.METADATA_KEY_PREFIX));
   }
 
@@ -224,24 +226,20 @@ public class JsonLogTransformer implements RecordTransformer {
   /**
    * Recursively processes a nested field of the input record
    * <p></p>
-   * If you imagine {@code jsonData} as a tree, we create branches only once we know a leaf exists. So for instance, if
-   * we get to the key a.b.c and discover that a.b.c.d needs to be stored in {@code jsonData}, we will create a map to
-   * store d; and then while returning from the recursion, we will create c, then b, then a.
+   * If you imagine {@code indexableExtras} as a tree, we create branches only once we know a
+   * leaf exists. So for instance, if we get to the key a.b.c and discover that a.b.c.d needs to
+   * be stored in {@code indexableExtras}, we will create a map to store d; and then while
+   * returning from the recursion, we will create c, then b, then a.
    * @param keyFromRoot The key, from the root in dot notation, of the current field of the record that we're processing
    * @param nestedFields The nested fields to extract, rooted at the same level of the tree as the current field of the
    *                     record we're processing
    * @param record The current field of the record that we're processing
    * @param outputRow The output row
-   * @param jsonDataContainer Container to hold the JSON objects for fields that don't fit the table's schema
+   * @param extraFieldsContainer Container to hold the JSON objects for fields that don't fit the table's schema
    */
-  private void processNestedFieldInRecord(
-      String keyFromRoot,
-      Map<String, Object> nestedFields,
-      Map<String, Object> record,
-      GenericRow outputRow,
-      JsonDataContainer jsonDataContainer
-  ) {
-    JsonDataContainer childJsonData = new JsonDataContainer(jsonDataContainer);
+  private void processNestedFieldInRecord(String keyFromRoot, Map<String, Object> nestedFields,
+      Map<String, Object> record, GenericRow outputRow, ExtraFieldsContainer extraFieldsContainer) {
+    ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(extraFieldsContainer);
     for (Map.Entry<String, Object> recordEntry : record.entrySet()) {
       String recordKey = recordEntry.getKey();
       String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
@@ -264,17 +262,18 @@ public class JsonLogTransformer implements RecordTransformer {
           }
           Map<String, Object> recordValueAsMap = (Map<String, Object>) recordValue;
 
-          childJsonData.initFromParent(jsonDataContainer, recordKey);
-          processNestedFieldInRecord(recordKeyFromRoot, childFields, recordValueAsMap, outputRow, childJsonData);
-          jsonDataContainer.addChild(recordKey, childJsonData);
+          childExtraFieldsContainer.initFromParent(extraFieldsContainer, recordKey);
+          processNestedFieldInRecord(recordKeyFromRoot, childFields, recordValueAsMap, outputRow,
+              childExtraFieldsContainer);
+          extraFieldsContainer.addChild(recordKey, childExtraFieldsContainer);
         }
       } else {
-        jsonDataContainer.addEntry(recordKey, recordEntry.getValue());
+        extraFieldsContainer.addEntry(recordKey, recordEntry.getValue());
       }
     }
   }
 
-  private void putJsonField(String fieldName, DataType fieldType, Map<String, Object> field, GenericRow outputRecord) {
+  private void putExtraField(String fieldName, DataType fieldType, Map<String, Object> field, GenericRow outputRecord) {
     if (null == field) {
       return;
     }
@@ -291,109 +290,110 @@ public class JsonLogTransformer implements RecordTransformer {
   }
 }
 
-class JsonDataContainer {
-  private final boolean _fillJsonData;
-  private final boolean _fillJsonDataNoIndex;
-  private Map<String, Object> _jsonData;
-  private boolean _jsonDataCreatedInternally;
-  private Map<String, Object> _jsonDataNoIndex;
-  private boolean _jsonDataNoIndexCreatedInternally;
-  private final String _jsonDataNoIndexSuffix;
+class ExtraFieldsContainer {
+  private final boolean _fillIndexableExtras;
+  private final boolean _fillUnindexableExtras;
+  private Map<String, Object> _indexableExtras;
+  private boolean _indexableExtrasCreatedInternally;
+  private Map<String, Object> _unindexableExtras;
+  private boolean _unindexableExtrasCreatedInternally;
+  private final String _unindexableFieldSuffix;
 
-  public JsonDataContainer(boolean fillJsonData, boolean fillJsonDataNoIndex, String jsonDataNoIndexSuffix) {
-    _fillJsonData = fillJsonData;
-    _fillJsonDataNoIndex = fillJsonDataNoIndex;
-    _jsonDataNoIndexSuffix = jsonDataNoIndexSuffix;
+  public ExtraFieldsContainer(boolean fillIndexableExtras, boolean fillUnindexableExtras,
+      String unindexableFieldSuffix) {
+    _fillIndexableExtras = fillIndexableExtras;
+    _fillUnindexableExtras = fillUnindexableExtras;
+    _unindexableFieldSuffix = unindexableFieldSuffix;
 
-    _jsonDataCreatedInternally = false;
-    _jsonDataNoIndexCreatedInternally = false;
+    _indexableExtrasCreatedInternally = false;
+    _unindexableExtrasCreatedInternally = false;
   }
 
-  public JsonDataContainer(JsonDataContainer parent) {
-    this(parent._fillJsonData, parent._fillJsonDataNoIndex, parent._jsonDataNoIndexSuffix);
+  public ExtraFieldsContainer(ExtraFieldsContainer parent) {
+    this(parent._fillIndexableExtras, parent._fillUnindexableExtras, parent._unindexableFieldSuffix);
   }
 
-  public void initFromParent(JsonDataContainer parent, String key) {
-    _jsonDataCreatedInternally = false;
-    _jsonDataNoIndexCreatedInternally = false;
+  public void initFromParent(ExtraFieldsContainer parent, String key) {
+    _indexableExtrasCreatedInternally = false;
+    _unindexableExtrasCreatedInternally = false;
 
     if (null == parent) {
-      _jsonData = null;
-      _jsonDataNoIndex = null;
+      _indexableExtras = null;
+      _unindexableExtras = null;
     } else {
-      if (null != parent._jsonData) {
-        _jsonData = (Map<String, Object>) parent._jsonData.get(key);
+      if (null != parent._indexableExtras) {
+        _indexableExtras = (Map<String, Object>) parent._indexableExtras.get(key);
       }
-      if (null != parent._jsonDataNoIndex) {
-        _jsonDataNoIndex = (Map<String, Object>) parent._jsonDataNoIndex.get(key);
+      if (null != parent._unindexableExtras) {
+        _unindexableExtras = (Map<String, Object>) parent._unindexableExtras.get(key);
       }
     }
   }
 
-  public void addChild(String childKey, JsonDataContainer child) {
-    if (_fillJsonData && child._jsonDataCreatedInternally) {
-      addToJsonData(childKey, child._jsonData);
+  public void addChild(String childKey, ExtraFieldsContainer child) {
+    if (_fillIndexableExtras && child._indexableExtrasCreatedInternally) {
+      addToIndexableExtras(childKey, child._indexableExtras);
     }
-    if (_fillJsonDataNoIndex && child._jsonDataNoIndexCreatedInternally) {
-      addToJsonDataNoIndex(childKey, child._jsonDataNoIndex);
+    if (_fillUnindexableExtras && child._unindexableExtrasCreatedInternally) {
+      addToUnindexableExtras(childKey, child._unindexableExtras);
     }
   }
 
   public void addEntry(String key, Object value) {
-    if (_fillJsonDataNoIndex && key.endsWith(_jsonDataNoIndexSuffix)) {
-      addToJsonDataNoIndex(key, value);
-    } else if (_fillJsonData) {
-      if (!_fillJsonDataNoIndex || !(value instanceof Map)) {
-        addToJsonData(key, value);
+    if (_fillUnindexableExtras && key.endsWith(_unindexableFieldSuffix)) {
+      addToUnindexableExtras(key, value);
+    } else if (_fillIndexableExtras) {
+      if (!_fillUnindexableExtras || !(value instanceof Map)) {
+        addToIndexableExtras(key, value);
       } else {
         // Explore the nested json if there's a possibility it could contain a
         // noIndex field
-        JsonDataContainer childJsonDataContainer = new JsonDataContainer(this);
-        childJsonDataContainer.initFromParent(this, key);
-        processNestedJsonDataField((Map<String, Object>) value, childJsonDataContainer);
-        addChild(key, childJsonDataContainer);
+        ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(this);
+        childExtraFieldsContainer.initFromParent(this, key);
+        processNestedField((Map<String, Object>) value, childExtraFieldsContainer);
+        addChild(key, childExtraFieldsContainer);
       }
     }
   }
 
-  private void processNestedJsonDataField(Map<String, Object> record, JsonDataContainer jsonDataContainer) {
-    JsonDataContainer childJsonDataContainer = new JsonDataContainer(jsonDataContainer);
+  private void processNestedField(Map<String, Object> record, ExtraFieldsContainer extraFieldsContainer) {
+    ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(extraFieldsContainer);
     for (Map.Entry<String, Object> entry : record.entrySet()) {
       String recordKey = entry.getKey();
       Object recordValue = entry.getValue();
-      if (recordKey.endsWith(_jsonDataNoIndexSuffix)) {
-        jsonDataContainer.addToJsonDataNoIndex(recordKey, recordValue);
+      if (recordKey.endsWith(_unindexableFieldSuffix)) {
+        extraFieldsContainer.addToUnindexableExtras(recordKey, recordValue);
       } else if (recordValue instanceof Map) {
-        childJsonDataContainer.initFromParent(jsonDataContainer, recordKey);
-        processNestedJsonDataField((Map<String, Object>) recordValue, childJsonDataContainer);
-        jsonDataContainer.addChild(recordKey, childJsonDataContainer);
+        childExtraFieldsContainer.initFromParent(extraFieldsContainer, recordKey);
+        processNestedField((Map<String, Object>) recordValue, childExtraFieldsContainer);
+        extraFieldsContainer.addChild(recordKey, childExtraFieldsContainer);
       } else {
-        jsonDataContainer.addToJsonData(recordKey, recordValue);
+        extraFieldsContainer.addToIndexableExtras(recordKey, recordValue);
       }
     }
   }
 
-  private void addToJsonData(String key, Object value) {
-    if (null == _jsonData) {
-      _jsonData = new HashMap<>();
-      _jsonDataCreatedInternally = true;
+  private void addToIndexableExtras(String key, Object value) {
+    if (null == _indexableExtras) {
+      _indexableExtras = new HashMap<>();
+      _indexableExtrasCreatedInternally = true;
     }
-    _jsonData.put(key, value);
+    _indexableExtras.put(key, value);
   }
 
-  private void addToJsonDataNoIndex(String key, Object value) {
-    if (null == _jsonDataNoIndex) {
-      _jsonDataNoIndex = new HashMap<>();
-      _jsonDataNoIndexCreatedInternally = true;
+  private void addToUnindexableExtras(String key, Object value) {
+    if (null == _unindexableExtras) {
+      _unindexableExtras = new HashMap<>();
+      _unindexableExtrasCreatedInternally = true;
     }
-    _jsonDataNoIndex.put(key, value);
+    _unindexableExtras.put(key, value);
   }
 
-  public Map<String, Object> getJsonData() {
-    return _jsonData;
+  public Map<String, Object> getIndexableExtras() {
+    return _indexableExtras;
   }
 
-  public Map<String, Object> getJsonDataNoIndex() {
-    return _jsonDataNoIndex;
+  public Map<String, Object> getUnindexableExtras() {
+    return _unindexableExtras;
   }
 }
