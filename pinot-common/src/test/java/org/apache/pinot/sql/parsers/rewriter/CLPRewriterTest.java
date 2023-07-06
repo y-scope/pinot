@@ -26,8 +26,8 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
 
-public class CLPDecodeRewriterTest {
-  private static final QueryRewriter _QUERY_REWRITER = new CLPDecodeRewriter();
+public class CLPRewriterTest {
+  private static final QueryRewriter _QUERY_REWRITER = new CLPRewriter();
 
   @Test
   public void testCLPDecodeRewrite() {
@@ -51,6 +51,26 @@ public class CLPDecodeRewriterTest {
     testUnsupportedQuery("SELECT clpDecode('message', 'default') FROM clpTable");
     testUnsupportedQuery("SELECT clpDecode('message', default) FROM clpTable");
     testUnsupportedQuery("SELECT clpDecode(message, default) FROM clpTable");
+  }
+
+  @Test
+  public void testClpMatchRewrite() {
+    // clpMatch rewrite using column group
+    testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '* xyz *')",
+        "SELECT * FROM clpTable WHERE message_logtype LIKE '% xyz %' AND clpDecode(message_logtype, "
+            + "message_dictionaryVars, message_encodedVars) LIKE '% xyz %'");
+    // clpMatch rewrite using individual columns
+    testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message_logtype, message_dictionaryVars, "
+            + "message_encodedVars, '* xyz *')",
+        "SELECT * FROM clpTable WHERE message_logtype LIKE '% xyz %' AND clpDecode(message_logtype, "
+            + "message_dictionaryVars, message_encodedVars) LIKE '% xyz %'");
+  }
+
+  @Test
+  public void testUnsupportedClpMatchQueries() {
+    testUnsupportedQuery("SELECT clpMatch(message) FROM clpTable");
+    testUnsupportedQuery("SELECT * FROM clpTable WHERE clpMatch(message_logtype, message_dictionaryVars, '* xyz *')");
+    testUnsupportedQuery("SELECT * FROM clpTable WHERE clpMatch('message', '* xyz *')");
   }
 
   private void testQueryRewrite(String original, String expected) {

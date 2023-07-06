@@ -114,6 +114,7 @@ public enum TransformFunctionType {
   LOOKUP("lookUp"),
   GROOVY("groovy"),
   CLPDECODE("clpDecode"),
+  CLPENCODEDVARSMATCH("clpEncodedVarsMatch"),
 
   // Regexp functions
   REGEXP_EXTRACT("regexpExtract"),
