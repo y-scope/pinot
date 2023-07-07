@@ -372,7 +372,7 @@ public class CLPRewriter implements QueryRewriter {
         }
         subqueriesFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(subqueryFunction));
       }
-      if (subqueriesFunction.getOperands().size() == 0) {
+      if (subqueriesFunction.getOperandsSize() == 0) {
         subqueriesFunction = null;
       }
     }
