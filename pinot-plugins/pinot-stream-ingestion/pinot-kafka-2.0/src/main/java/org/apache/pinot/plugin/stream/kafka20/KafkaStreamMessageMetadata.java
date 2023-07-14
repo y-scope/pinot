@@ -28,8 +28,8 @@ public class KafkaStreamMessageMetadata extends StreamMessageMetadata {
   public static final String METADATA_OFFSET_KEY = "offset";
   public static final String RECORD_TIMESTAMP_KEY = "recordTimestamp";
 
-  public KafkaStreamMessageMetadata(long recordIngestionTimeMs, @Nullable GenericRow headers,
+  public KafkaStreamMessageMetadata(long recordIngestionTimeMs, int recordSerializedSize, @Nullable GenericRow headers,
       Map<String, String> metadata) {
-    super(recordIngestionTimeMs, headers, metadata);
+    super(recordIngestionTimeMs, recordSerializedSize, headers, metadata);
   }
 }

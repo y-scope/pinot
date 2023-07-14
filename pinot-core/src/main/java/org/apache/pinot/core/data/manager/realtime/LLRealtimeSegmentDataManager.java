@@ -515,6 +515,7 @@ public class LLRealtimeSegmentDataManager extends RealtimeSegmentDataManager {
     _rateLimiter.throttle(messageCount);
 
     PinotMeter realtimeRowsConsumedMeter = null;
+    PinotMeter realtimeBytesIngestedMeter = null;
     PinotMeter realtimeRowsDroppedMeter = null;
     PinotMeter realtimeIncompleteRowsConsumedMeter = null;
 
@@ -601,6 +602,11 @@ public class LLRealtimeSegmentDataManager extends RealtimeSegmentDataManager {
             realtimeRowsConsumedMeter =
                 _serverMetrics.addMeteredTableValue(_clientId, ServerMeter.REALTIME_ROWS_CONSUMED, 1,
                     realtimeRowsConsumedMeter);
+
+            int recordSerializedValueLength = _lastRowMetadata.getRecordSerializedSize();
+            realtimeBytesIngestedMeter =
+                _serverMetrics.addMeteredTableValue(_clientId, ServerMeter.REALTIME_BYTES_CONSUMED,
+                    recordSerializedValueLength, realtimeBytesIngestedMeter);
           } catch (Exception e) {
             _numRowsErrored++;
             String errorMessage = String.format("Caught exception while indexing the record: %s", transformedRow);

@@ -64,6 +64,13 @@ public interface RowMetadata {
   }
 
   /**
+   * @return The serialized size of the record
+   */
+  default int getRecordSerializedSize() {
+    return Integer.MIN_VALUE;
+  }
+
+  /**
    * Returns the stream message headers
    *
    * @return A {@link GenericRow} that encapsulates the headers in the ingested row

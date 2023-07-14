@@ -36,7 +36,8 @@ public interface KafkaMetadataExtractor {
         Map<String, String> metadataMap = new HashMap<>();
         metadataMap.put(KafkaStreamMessageMetadata.METADATA_OFFSET_KEY, String.valueOf(record.offset()));
         metadataMap.put(KafkaStreamMessageMetadata.RECORD_TIMESTAMP_KEY, String.valueOf(recordTimestamp));
-        return new KafkaStreamMessageMetadata(recordTimestamp, RowMetadata.EMPTY_ROW, metadataMap);
+        return new KafkaStreamMessageMetadata(recordTimestamp, record.serializedValueSize(), RowMetadata.EMPTY_ROW,
+            metadataMap);
       }
       GenericRow headerGenericRow = new GenericRow();
       Headers headers = record.headers();
@@ -49,7 +50,8 @@ public interface KafkaMetadataExtractor {
       Map<String, String> metadata = new HashMap<>();
       metadata.put(KafkaStreamMessageMetadata.METADATA_OFFSET_KEY, String.valueOf(record.offset()));
       metadata.put(KafkaStreamMessageMetadata.RECORD_TIMESTAMP_KEY, String.valueOf(record.timestamp()));
-      return new KafkaStreamMessageMetadata(record.timestamp(), headerGenericRow, metadata);
+      return new KafkaStreamMessageMetadata(record.timestamp(), record.serializedValueSize(), headerGenericRow,
+          metadata);
     };
   }
 
