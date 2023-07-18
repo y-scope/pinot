@@ -119,7 +119,11 @@ public class CLPDecodeTransformFunction extends BaseTransformFunction {
         BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
     for (int i = 0; i < length; i++) {
       try {
-        _stringValuesSV[i] = clpMessageDecoder.decodeMessage(logtypes[i], dictionaryVars[i], encodedVars[i]);
+        if (null == logtypes[i]) {
+          _stringValuesSV[i] = null;
+        } else {
+          _stringValuesSV[i] = clpMessageDecoder.decodeMessage(logtypes[i], dictionaryVars[i], encodedVars[i]);
+        }
       } catch (Exception ex) {
         _logger.error("Failed to decode CLP-encoded field.", ex);
         _stringValuesSV[i] = _defaultValue;
