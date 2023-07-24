@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.plugin.inputformat.clplog;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.yscope.clp.compressorfrontend.BuiltInVariableHandlingRuleVersions;
 import com.yscope.clp.compressorfrontend.EncodedMessage;
 import com.yscope.clp.compressorfrontend.MessageEncoder;
@@ -30,6 +31,7 @@ import javax.annotation.Nullable;
 import org.apache.pinot.spi.data.readers.BaseRecordExtractor;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.apache.pinot.spi.data.readers.RecordExtractorConfig;
+import org.apache.pinot.spi.utils.JsonUtils;
 import org.apache.pinot.sql.parsers.rewriter.CLPRewriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -165,12 +167,25 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
     Object[] encodedVars = null;
     if (null != value) {
       boolean fieldIsUnencodable = false;
-      if (!(value instanceof String)) {
-        LOGGER.error("Can't encode value of type {} with CLP. name: '{}', value: '{}'", value.getClass().getName(), key,
-            value);
-        fieldIsUnencodable = true;
+
+      // Get value as string
+      String valueAsString = null;
+      if (value instanceof String) {
+        valueAsString = (String) value;
       } else {
-        String valueAsString = (String) value;
+        try {
+          valueAsString = JsonUtils.objectToString(value);
+          LOGGER.info("Value of type {} converted to String to encode with CLP. name: '{}', value: '{}'",
+              value.getClass().getName(), key, value);
+        } catch (JsonProcessingException ex) {
+          LOGGER.error("Can't convert value of type {} to String (to encode with CLP). name: '{}', value: '{}'",
+              value.getClass().getName(), key, value);
+          fieldIsUnencodable = true;
+        }
+      }
+
+      // Encode value with CLP
+      if (null != valueAsString) {
         try {
           _clpMessageEncoder.encodeMessage(valueAsString, _clpEncodedMessage);
           logtype = _clpEncodedMessage.getLogTypeAsString();
