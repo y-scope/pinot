@@ -63,11 +63,11 @@ import org.slf4j.LoggerFactory;
  * This class' implementation is based on {@link org.apache.pinot.plugin.inputformat.json.JSONRecordExtractor}.
  */
 public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Object>> {
-  // The maximum number of variables that can be stored in a cell (row of a single column).
+  // The maximum number of encoded variables that can be stored in a cell (row of a single column).
   // NOTE: This should be less than or equal to
   // org.apache.pinot.segment.local.indexsegment.mutable.DefaultMutableIndexProvider.MAX_MULTI_VALUES_PER_ROW to avoid
   // truncation.
-  private static final int MAX_VARIABLES_PER_CELL = 1000;
+  private static final int MAX_ENCODED_VARIABLES_PER_CELL = 1000;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(CLPLogRecordExtractor.class);
 
@@ -177,12 +177,8 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
           encodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
           dictVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
 
-          if (null != encodedVars && encodedVars.length > MAX_VARIABLES_PER_CELL) {
+          if (null != encodedVars && encodedVars.length > MAX_ENCODED_VARIABLES_PER_CELL) {
             LOGGER.error("Can't encode field with CLP. name: '{}', error: Too many encoded variables", key);
-            fieldIsUnencodable = true;
-          }
-          if (null != dictVars && dictVars.length > MAX_VARIABLES_PER_CELL) {
-            LOGGER.error("Can't encode field with CLP. name: '{}', error: Too many dictionary variables", key);
             fieldIsUnencodable = true;
           }
         } catch (IOException e) {
