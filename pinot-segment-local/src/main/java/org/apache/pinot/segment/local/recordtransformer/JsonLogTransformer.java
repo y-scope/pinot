@@ -19,15 +19,18 @@
 package org.apache.pinot.segment.local.recordtransformer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.table.TableConfig;
 import org.apache.pinot.spi.config.table.ingestion.JsonLogTransformerConfig;
+import org.apache.pinot.spi.data.FieldSpec;
 import org.apache.pinot.spi.data.FieldSpec.DataType;
 import org.apache.pinot.spi.data.Schema;
 import org.apache.pinot.spi.data.readers.GenericRow;
@@ -37,356 +40,429 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+/**
+ * This transformer transforms a record representing a JSON log event such that it can be stored in a table. JSON log
+ * events typically have a user-defined schema, so it is impractical to store each field in its own table column. At the
+ * same time, most (if not all) fields are important to the user, so we should not drop any field unnecessarily. Thus,
+ * this transformer primarily takes record-fields that don't exist in the schema and stores them in a type of catchall
+ * field.
+ * <p>
+ * For example, consider this log event:
+ * <pre>
+ * {
+ *   "timestamp": 1687786535928,
+ *   "hostname": "host1",
+ *   "level": "INFO",
+ *   "message": "Started processing job1",
+ *   "tags": {
+ *     "platform": "data",
+ *     "service": "serializer",
+ *     "params": {
+ *       "queueLength": 5,
+ *       "timeout": 299,
+ *       "userData_noIndex": {
+ *         "nth": 99
+ *       }
+ *     }
+ *   }
+ * }
+ * </pre>
+ * And let's say the table's schema contains these fields:
+ * <ul>
+ *   <li>timestamp</li>
+ *   <li>hostname</li>
+ *   <li>level</li>
+ *   <li>message</li>
+ *   <li>tags.platform</li>
+ *   <li>tags.service</li>
+ *   <li>indexableExtras</li>
+ *   <li>unindexableExtras</li>
+ * </ul>
+ * <p>
+ * Without this transformer, the entire "tags" field would be dropped when storing the record in the table. However,
+ * with this transformer, the record would be transformed into the following:
+ * <pre>
+ * {
+ *   "timestamp": 1687786535928,
+ *   "hostname": "host1",
+ *   "level": "INFO",
+ *   "message": "Started processing job1",
+ *   "tags.platform": "data",
+ *   "tags.service": "serializer",
+ *   "indexableExtras": {
+ *     "tags": {
+ *       "params": {
+ *         "queueLength": 5,
+ *         "timeout": 299
+ *       }
+ *     }
+ *   },
+ *   "unindexableExtras": {
+ *     "tags": {
+ *       "userData_noIndex": {
+ *         "nth": 99
+ *       }
+ *     }
+ *   }
+ * }
+ * </pre>
+ * Notice that the transformer:
+ * <ul>
+ *   <li>Flattens nested which exist in the schema, like "tags.platform"</li>
+ *   <li>Moves fields which don't exist in the schema into the "indexableExtras" field</li>
+ *   <li>Moves fields which don't exist in the schema and have the suffix "_noIndex" into the "unindexableExtras"
+ *   field</li>
+ * </ul>
+ * <p>
+ * The "unindexableExtras" field allows the transformer to separate fields which don't need indexing (because they are
+ * only retrieved, not searched) from those that do. The transformer also has other configuration options specified in
+ * {@link JsonLogTransformerConfig}.
+ * <p>
+ * One notable complication that this class handles is adding nested fields to the "extras" fields. E.g., consider
+ * this record
+ * <pre>
+ * {
+ *   a: {
+ *     b: {
+ *       c: 0,
+ *       d: 1
+ *     }
+ *   }
+ * }
+ * </pre>
+ * Assume "$.a.b.c" exists in the schema but "$.a.b.d" doesn't. This class processes the record recursively from the
+ * root node to the children, so it would only know that "$.a.b.d" doesn't exist when it gets to "d". At this point we
+ * need to add "d" and all of its parents to the indexableExtrasField. To do so efficiently, the class builds this
+ * branch starting from the leaf and attaches it to parent nodes as we return from each recursive call.
+ */
 public class JsonLogTransformer implements RecordTransformer {
   private static final Logger _logger = LoggerFactory.getLogger(JsonLogTransformer.class);
 
-  private final String _indexableExtrasFieldName;
+  private final boolean _continueOnError;
+  private final JsonLogTransformerConfig _transformerConfig;
   private final DataType _indexableExtrasFieldType;
-  private final String _unindexableExtrasFieldName;
   private final DataType _unindexableExtrasFieldType;
-  private final String _unindexableFieldSuffix;
-  private final Set<String> _fieldPathsToDrop;
 
-  private Set<String> _rootLevelFields;
-  private Map<String, Object> _nestedFields;
+  private Map<String, Object> _schemaTree;
 
   public JsonLogTransformer(TableConfig tableConfig, Schema schema) {
     if (null == tableConfig.getIngestionConfig() || null == tableConfig.getIngestionConfig()
         .getJsonLogTransformerConfig()) {
-      _indexableExtrasFieldName = null;
+      _continueOnError = false;
+      _transformerConfig = null;
       _indexableExtrasFieldType = null;
-      _unindexableExtrasFieldName = null;
       _unindexableExtrasFieldType = null;
-      _unindexableFieldSuffix = null;
-      _fieldPathsToDrop = null;
       return;
     }
 
-    JsonLogTransformerConfig jsonLogTransformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
-    _indexableExtrasFieldName = jsonLogTransformerConfig.getIndexableExtrasField();
-    _indexableExtrasFieldType = schema.getFieldSpecFor(_indexableExtrasFieldName).getDataType();
-    _unindexableExtrasFieldName = jsonLogTransformerConfig.getUnindexableExtrasField();
-    _unindexableExtrasFieldType = schema.getFieldSpecFor(_unindexableExtrasFieldName).getDataType();
-    _unindexableFieldSuffix = jsonLogTransformerConfig.getUnindexableFieldSuffix();
-    _fieldPathsToDrop = jsonLogTransformerConfig.getFieldPathsToDrop();
+    _continueOnError = tableConfig.getIngestionConfig().isContinueOnError();
+    _transformerConfig = tableConfig.getIngestionConfig().getJsonLogTransformerConfig();
+    String indexableExtrasFieldName = _transformerConfig.getIndexableExtrasField();
+    _indexableExtrasFieldType =
+        null == indexableExtrasFieldName ? null : getAndValidateExtrasFieldType(schema, indexableExtrasFieldName);
+    String unindexableExtrasFieldName = _transformerConfig.getUnindexableExtrasField();
+    _unindexableExtrasFieldType =
+        null == unindexableExtrasFieldName ? null : getAndValidateExtrasFieldType(schema, unindexableExtrasFieldName);
 
-    _rootLevelFields = new HashSet<>();
-    _nestedFields = new HashMap<>();
-    initializeFields(schema.getPhysicalColumnNames());
+    validateSchemaAndInitializeTree(schema);
   }
 
-  /**
-   * @return Whether this transformer is a no-op as currently configured.
-   */
   @Override
   public boolean isNoOp() {
-    return null == _indexableExtrasFieldName && null == _unindexableExtrasFieldName;
+    return null == _transformerConfig;
   }
 
-  /**
-   * Transforms the JSON record
-   * @param record Record to transform
-   * @return Transformed record
-   */
   @Nullable
   @Override
   public GenericRow transform(GenericRow record) {
     GenericRow outputRecord = new GenericRow();
 
-    ExtraFieldsContainer extraFieldsContainer =
-        new ExtraFieldsContainer(null != _indexableExtrasFieldName, null != _unindexableExtrasFieldName,
-            _unindexableFieldSuffix);
-
-    // Process all fields of the input record. There are 4 cases:
-    // 1. The field is at the root-level and is in the table's schema.
-    // 2. The field is special (e.g., "__metadata$...") and should be passed through unchanged.
-    // 3. The field is nested (e.g. a.b.c) and the the field's common root-level ancestor (e.g. a) is in the table's
-    //    schema; we must recurse until we get to the leaf sub-key to see if the field indeed needs extracting.
-    // 4. The field is in no other category and it must be stored in indexableExtrasField (if it's
-    //    set)
-    ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(extraFieldsContainer);
-    for (Map.Entry<String, Object> recordEntry : record.getFieldToValueMap().entrySet()) {
-      String recordKey = recordEntry.getKey();
-      Object recordValue = recordEntry.getValue();
-
-      if (null != _fieldPathsToDrop && _fieldPathsToDrop.contains(recordKey)) {
-        continue;
+    try {
+      ExtraFieldsContainer extraFieldsContainer =
+          new ExtraFieldsContainer(null != _transformerConfig.getUnindexableExtrasField());
+      for (Map.Entry<String, Object> recordEntry : record.getFieldToValueMap().entrySet()) {
+        String recordKey = recordEntry.getKey();
+        Object recordValue = recordEntry.getValue();
+        processField(_schemaTree, recordKey, recordKey, recordValue, extraFieldsContainer, outputRecord);
       }
-
-      if (_rootLevelFields.contains(recordKey) || isSpecialField(recordKey)) {
-        outputRecord.putValue(recordKey, recordValue);
-      } else if (_nestedFields.containsKey(recordKey)) {
-        if (!(recordValue instanceof Map)) {
-          _logger.error("Schema mismatch: Expected {} in record to be a map, but it's a {}. Fall-back to storing in "
-              + "indexableExtrasField", recordKey, recordValue.getClass().getName());
-          continue;
-        }
-
-        childExtraFieldsContainer.initFromParent(extraFieldsContainer, recordKey);
-        processNestedFieldInRecord(recordKey, (Map<String, Object>) _nestedFields.get(recordKey),
-            (Map<String, Object>) recordValue, outputRecord, childExtraFieldsContainer);
-        extraFieldsContainer.addChild(recordKey, childExtraFieldsContainer);
-      } else {
-        extraFieldsContainer.addEntry(recordKey, recordValue);
+      putExtrasField(_transformerConfig.getIndexableExtrasField(), _indexableExtrasFieldType,
+          extraFieldsContainer.getIndexableExtras(), outputRecord);
+      putExtrasField(_transformerConfig.getUnindexableExtrasField(), _unindexableExtrasFieldType,
+          extraFieldsContainer.getUnindexableExtras(), outputRecord);
+    } catch (Exception e) {
+      if (!_continueOnError) {
+        throw e;
       }
+      _logger.debug("Couldn't transform record: {}", record.toString(), e);
+      outputRecord.putValue(GenericRow.INCOMPLETE_RECORD_KEY, true);
     }
-
-    putExtraField(_indexableExtrasFieldName, _indexableExtrasFieldType, extraFieldsContainer.getIndexableExtras(),
-        outputRecord);
-    putExtraField(_unindexableExtrasFieldName, _unindexableExtrasFieldType, extraFieldsContainer.getUnindexableExtras(),
-        outputRecord);
 
     return outputRecord;
   }
 
-  private boolean isSpecialField(String field) {
-    return (field.equals(StreamDataDecoderImpl.KEY) || field.startsWith(StreamDataDecoderImpl.HEADER_KEY_PREFIX)
-        || field.startsWith(StreamDataDecoderImpl.METADATA_KEY_PREFIX));
+  /**
+   * @return The field type for the given extras field
+   */
+  private DataType getAndValidateExtrasFieldType(Schema schema, String extrasFieldName) {
+    FieldSpec fieldSpec = schema.getFieldSpecFor(extrasFieldName);
+    Preconditions.checkState(null != fieldSpec, "Field '%s' doesn't exist in schema", extrasFieldName);
+    DataType fieldDataType = fieldSpec.getDataType();
+    Preconditions.checkState(DataType.JSON == fieldDataType || DataType.STRING == fieldDataType,
+        "Field '%s' has unsupported type %s", fieldDataType.toString());
+    return fieldDataType;
   }
 
   /**
-   * Initializes the root-level and nested fields based on the fields requested by the caller. Nested fields are
-   * converted from dot notation (e.g., "k1.k2.k3") to nested objects (e.g., {k1: {k2: {k3: null}}}) so that input
-   * records can be efficiently transformed to match the given fields.
-   * <p></p>
-   * NOTE: This method doesn't handle keys with escaped separators (e.g., "par\.ent" in "par\.ent.child")
-   * @param fields The fields to extract from input records
+   * Validates the schema with this transformer's config and creates a tree representing the fields in the schema to be
+   * used when transforming input records. For instance, the field "a.b" in the schema would be un-flattened into
+   * "{a: b: null}" in the tree, allowing us to more easily process records containing the latter.
+   * @throws IllegalArgumentException if schema validation fails
    */
-  private void initializeFields(Set<String> fields) {
-    ArrayList<String> subKeys = new ArrayList<>();
-    for (String field : fields) {
-      int keySeparatorOffset = field.indexOf(JsonUtils.KEY_SEPARATOR);
-      if (-1 == keySeparatorOffset) {
-        _rootLevelFields.add(field);
-      } else {
-        subKeys.clear();
-        if (!getAndValidateSubKeys(field, keySeparatorOffset, subKeys)) {
-          continue;
-        }
+  private void validateSchemaAndInitializeTree(@Nonnull Schema schema)
+      throws IllegalArgumentException {
+    Set<String> schemaFields = schema.getPhysicalColumnNames();
 
-        // Add all sub-keys except the leaf to _nestedFields
-        Map<String, Object> parent = _nestedFields;
-        for (int i = 0; i < subKeys.size() - 1; i++) {
-          String subKey = subKeys.get(i);
-
-          Map<String, Object> child;
-          if (parent.containsKey(subKey)) {
-            child = (Map<String, Object>) parent.get(subKey);
-          } else {
-            child = new HashMap<>();
-            parent.put(subKey, child);
-          }
-          parent = child;
-        }
-        // Add the leaf pointing at null
-        parent.put(subKeys.get(subKeys.size() - 1), null);
+    // Validate that none of the columns in the schema end with unindexableFieldSuffix
+    String unindexableFieldSuffix = _transformerConfig.getUnindexableFieldSuffix();
+    if (null != unindexableFieldSuffix) {
+      for (String field : schemaFields) {
+        Preconditions.checkState(!field.endsWith(unindexableFieldSuffix), "Field '%s' has no-index suffix '%s'", field,
+            unindexableFieldSuffix);
       }
     }
+
+    // Validate that none of the columns in the schema end overlap with the fields in fieldPathsToDrop
+    Set<String> fieldPathsToDrop = _transformerConfig.getFieldPathsToDrop();
+    if (null != fieldPathsToDrop) {
+      Set<String> fieldIntersection = new HashSet<>(schemaFields);
+      fieldIntersection.retainAll(fieldPathsToDrop);
+      Preconditions.checkState(fieldIntersection.isEmpty(), "Fields in schema overlap with fieldPathsToDrop");
+    }
+
+    Map<String, Object> schemaTree = new HashMap<>();
+    List<String> subKeys = new ArrayList<>();
+    for (String field : schemaFields) {
+      int keySeparatorIdx = field.indexOf(JsonUtils.KEY_SEPARATOR);
+      if (-1 == keySeparatorIdx) {
+        // Not a flattened key
+        schemaTree.put(field, null);
+        continue;
+      }
+
+      subKeys.clear();
+      getAndValidateSubKeys(field, keySeparatorIdx, subKeys);
+
+      // Add all sub-keys except the leaf to the tree
+      Map<String, Object> currentNode = schemaTree;
+      for (int i = 0; i < subKeys.size() - 1; i++) {
+        String subKey = subKeys.get(i);
+
+        Map<String, Object> childNode;
+        if (currentNode.containsKey(subKey)) {
+          childNode = (Map<String, Object>) currentNode.get(subKey);
+          if (null == childNode) {
+            throw new IllegalArgumentException(
+                "Cannot handle field '" + String.join(JsonUtils.KEY_SEPARATOR, subKeys.subList(0, i + 1))
+                    + "' which overlaps with another field in the schema.");
+          }
+        } else {
+          childNode = new HashMap<>();
+          currentNode.put(subKey, childNode);
+        }
+        currentNode = childNode;
+      }
+      // Add the leaf pointing at null
+      String subKey = subKeys.get(subKeys.size() - 1);
+      if (currentNode.containsKey(subKey)) {
+        throw new IllegalArgumentException(
+            "Cannot handle field '" + field + "' which overlaps with another field in the schema.");
+      }
+      currentNode.put(subKey, null);
+    }
+
+    _schemaTree = schemaTree;
   }
 
   /**
-   * Given a nested JSON field key in dot notation (e.g. "k1.k2.k3"), returns all the sub-keys (e.g. ["k1", "k2", "k3"])
+   * Given a JSON path (e.g. "k1.k2.k3"), returns all the sub-keys (e.g. ["k1", "k2", "k3"])
    * @param key The complete key
-   * @param firstKeySeparatorOffset The offset of the first key separator in `key`
-   * @param subKeys The array to store the sub-keys in
-   * @return true on success, false if any sub-key was empty
+   * @param firstKeySeparatorIdx The index of the first key separator in {@code key}
+   * @param subKeys Returns the sub-keys
+   * @throws IllegalArgumentException if any sub-key is empty
    */
-  private boolean getAndValidateSubKeys(String key, int firstKeySeparatorOffset, List<String> subKeys) {
-    int subKeyBeginOffset = 0;
-    int subKeyEndOffset = firstKeySeparatorOffset;
-
+  private void getAndValidateSubKeys(String key, int firstKeySeparatorIdx, List<String> subKeys)
+      throws IllegalArgumentException {
+    int subKeyBeginIdx = 0;
+    int subKeyEndIdx = firstKeySeparatorIdx;
     int keyLength = key.length();
     while (true) {
       // Validate and add the sub-key
-      String subKey = key.substring(subKeyBeginOffset, subKeyEndOffset);
+      String subKey = key.substring(subKeyBeginIdx, subKeyEndIdx);
       if (subKey.isEmpty()) {
-        _logger.error("Empty sub-key in " + key + ". Ignoring field.");
-        return false;
+        throw new IllegalArgumentException("Unsupported empty sub-key in '" + key + "'.");
       }
       subKeys.add(subKey);
 
       // Advance to the beginning of the next sub-key
-      subKeyBeginOffset = subKeyEndOffset + 1;
-      if (subKeyBeginOffset >= keyLength) {
+      subKeyBeginIdx = subKeyEndIdx + 1;
+      if (subKeyBeginIdx >= keyLength) {
         break;
       }
 
       // Find the end of the next sub-key
-      int keySeparatorOffset = key.indexOf(JsonUtils.KEY_SEPARATOR, subKeyBeginOffset);
-      if (-1 != keySeparatorOffset) {
-        subKeyEndOffset = keySeparatorOffset;
+      int keySeparatorIdx = key.indexOf(JsonUtils.KEY_SEPARATOR, subKeyBeginIdx);
+      if (-1 != keySeparatorIdx) {
+        subKeyEndIdx = keySeparatorIdx;
       } else {
-        subKeyEndOffset = key.length();
+        subKeyEndIdx = key.length();
       }
     }
-
-    return true;
   }
 
   /**
-   * Recursively processes a nested field of the input record
-   * <p></p>
-   * If you imagine {@code indexableExtras} as a tree, we create branches only once we know a
-   * leaf exists. So for instance, if we get to the key a.b.c and discover that a.b.c.d needs to
-   * be stored in {@code indexableExtras}, we will create a map to store d; and then while
-   * returning from the recursion, we will create c, then b, then a.
-   * @param keyFromRoot The key, from the root in dot notation, of the current field of the record that we're processing
-   * @param nestedFields The nested fields to extract, rooted at the same level of the tree as the current field of the
-   *                     record we're processing
-   * @param record The current field of the record that we're processing
-   * @param outputRow The output row
-   * @param extraFieldsContainer Container to hold the JSON objects for fields that don't fit the table's schema
+   * Processes a field from the record and either:
+   * <ul>
+   *   <li>Drops it if it's in fieldPathsToDrop</li>
+   *   <li>Adds it to the output record if it's special or exists in the schema</li>
+   *   <li>Adds it to one of the extras fields</li>
+   * </ul>
+   * <p>
+   * This method works recursively to build the output record. It is similar to {@code addIndexableField} except it
+   * handles fields which exist in the schema.
+   * @param schemaNode The current node in the schema tree
+   * @param keyJsonPath The JSON path (without the "$." prefix) of the current field
+   * @param key
+   * @param value
+   * @param extraFieldsContainer A container for the "extras" fields corresponding to this node.
+   * @param outputRecord Returns the record after transformation
    */
-  private void processNestedFieldInRecord(String keyFromRoot, Map<String, Object> nestedFields,
-      Map<String, Object> record, GenericRow outputRow, ExtraFieldsContainer extraFieldsContainer) {
-    ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(extraFieldsContainer);
-    for (Map.Entry<String, Object> recordEntry : record.entrySet()) {
-      String recordKey = recordEntry.getKey();
-      String recordKeyFromRoot = keyFromRoot + JsonUtils.KEY_SEPARATOR + recordKey;
-      Object recordValue = recordEntry.getValue();
+  private void processField(Map<String, Object> schemaNode, String keyJsonPath, String key, Object value,
+      ExtraFieldsContainer extraFieldsContainer, GenericRow outputRecord) {
 
-      if (null != _fieldPathsToDrop && _fieldPathsToDrop.contains(recordKeyFromRoot)) {
-        continue;
-      }
+    if (StreamDataDecoderImpl.isSpecialKeyType(key)) {
+      outputRecord.putValue(key, value);
+      return;
+    }
 
-      if (nestedFields.containsKey(recordKey)) {
-        Map<String, Object> childFields = (Map<String, Object>) nestedFields.get(recordKey);
-        if (null == childFields) {
-          // We've reached a leaf
-          outputRow.putValue(recordKeyFromRoot, recordValue);
-        } else {
-          if (!(recordValue instanceof Map)) {
-            _logger.error("Schema mismatch: Expected {} in record to be a map, but it's a {}", recordKeyFromRoot,
-                recordValue.getClass().getName());
-            continue;
-          }
-          Map<String, Object> recordValueAsMap = (Map<String, Object>) recordValue;
+    Set<String> fieldPathsToDrop = _transformerConfig.getFieldPathsToDrop();
+    if (null != fieldPathsToDrop && fieldPathsToDrop.contains(keyJsonPath)) {
+      return;
+    }
 
-          childExtraFieldsContainer.initFromParent(extraFieldsContainer, recordKey);
-          processNestedFieldInRecord(recordKeyFromRoot, childFields, recordValueAsMap, outputRow,
-              childExtraFieldsContainer);
-          extraFieldsContainer.addChild(recordKey, childExtraFieldsContainer);
-        }
+    String unindexableFieldSuffix = _transformerConfig.getUnindexableFieldSuffix();
+    if (null != unindexableFieldSuffix && key.endsWith(unindexableFieldSuffix)) {
+      extraFieldsContainer.addUnindexableEntry(key, value);
+      return;
+    }
+
+    if (!schemaNode.containsKey(key)) {
+      addIndexableField(keyJsonPath, key, value, extraFieldsContainer);
+      return;
+    }
+
+    Map<String, Object> childSchemaNode = (Map<String, Object>) schemaNode.get(key);
+    boolean storeUnindexableExtras = _transformerConfig.getUnindexableExtrasField() != null;
+    if (null == childSchemaNode) {
+      if (!(value instanceof Map) || null == unindexableFieldSuffix) {
+        outputRecord.putValue(keyJsonPath, value);
       } else {
-        extraFieldsContainer.addEntry(recordKey, recordEntry.getValue());
+        // The field's value is a map which could contain a no-index field, so we need to keep traversing the map
+        ExtraFieldsContainer container = new ExtraFieldsContainer(storeUnindexableExtras);
+        addIndexableField(keyJsonPath, key, value, container);
+        Map<String, Object> indexableFields = container.getIndexableExtras();
+        outputRecord.putValue(keyJsonPath, indexableFields.get(key));
+        Map<String, Object> unindexableFields = container.getUnindexableExtras();
+        if (null != unindexableFields) {
+          extraFieldsContainer.addUnindexableEntry(key, unindexableFields.get(key));
+        }
+      }
+    } else {
+      if (!(value instanceof Map)) {
+        _logger.debug("Record doesn't match schema: Schema node '{}' is a map but record value is a {}", keyJsonPath,
+            value.getClass().getName());
+        extraFieldsContainer.addIndexableEntry(key, value);
+      } else {
+        ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(storeUnindexableExtras);
+        Map<String, Object> valueAsMap = (Map<String, Object>) value;
+        for (Map.Entry<String, Object> entry : valueAsMap.entrySet()) {
+          String childKey = entry.getKey();
+          processField(childSchemaNode, keyJsonPath + JsonUtils.KEY_SEPARATOR + childKey, childKey, entry.getValue(),
+              childExtraFieldsContainer, outputRecord);
+        }
+        extraFieldsContainer.addChild(key, childExtraFieldsContainer);
       }
     }
   }
 
-  private void putExtraField(String fieldName, DataType fieldType, Map<String, Object> field, GenericRow outputRecord) {
+  /**
+   * Adds an indexable field to the given {@code ExtrasFieldsContainer}.
+   * <p>
+   * This method is similar to {@code processField} except it doesn't handle fields which exist in the schema.
+   */
+  void addIndexableField(String recordJsonPath, String key, Object value, ExtraFieldsContainer extraFieldsContainer) {
+    Set<String> fieldPathsToDrop = _transformerConfig.getFieldPathsToDrop();
+    if (null != fieldPathsToDrop && fieldPathsToDrop.contains(recordJsonPath)) {
+      return;
+    }
+
+    String unindexableFieldSuffix = _transformerConfig.getUnindexableFieldSuffix();
+    if (null != unindexableFieldSuffix && key.endsWith(unindexableFieldSuffix)) {
+      extraFieldsContainer.addUnindexableEntry(key, value);
+      return;
+    }
+
+    boolean storeUnindexableExtras = _transformerConfig.getUnindexableExtrasField() != null;
+    if (!(value instanceof Map)) {
+      extraFieldsContainer.addIndexableEntry(key, value);
+    } else {
+      ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(storeUnindexableExtras);
+      Map<String, Object> valueAsMap = (Map<String, Object>) value;
+      for (Map.Entry<String, Object> entry : valueAsMap.entrySet()) {
+        String childKey = entry.getKey();
+        addIndexableField(recordJsonPath + JsonUtils.KEY_SEPARATOR + childKey, childKey, entry.getValue(),
+            childExtraFieldsContainer);
+      }
+      extraFieldsContainer.addChild(key, childExtraFieldsContainer);
+    }
+  }
+
+  /**
+   * Converts (if necessary) and adds the given extras field to the output record
+   */
+  private void putExtrasField(String fieldName, DataType fieldType, Map<String, Object> field,
+      GenericRow outputRecord) {
     if (null == field) {
       return;
     }
 
-    if (DataType.JSON == fieldType) {
-      outputRecord.putValue(fieldName, field);
-    } else {
-      try {
-        outputRecord.putValue(fieldName, JsonUtils.objectToString(field));
-      } catch (JsonProcessingException e) {
-        throw new RuntimeException("Failed to convert \"" + fieldName + "\" to string", e);
-      }
+    switch (fieldType) {
+      case JSON:
+        outputRecord.putValue(fieldName, field);
+        break;
+      case STRING:
+        try {
+          outputRecord.putValue(fieldName, JsonUtils.objectToString(field));
+        } catch (JsonProcessingException e) {
+          throw new RuntimeException("Failed to convert '" + fieldName + "' to string", e);
+        }
+        break;
+      default:
+        throw new UnsupportedOperationException("Cannot convert '" + fieldName + "' to " + fieldType.name());
     }
   }
 }
 
+/**
+ * A class to encapsulate the "extras" fields (indexableExtras and unindexableExtras) at a node in the record (when
+ * viewed as a tree).
+ */
 class ExtraFieldsContainer {
-  private final boolean _fillIndexableExtras;
-  private final boolean _fillUnindexableExtras;
-  private Map<String, Object> _indexableExtras;
-  private boolean _indexableExtrasCreatedInternally;
-  private Map<String, Object> _unindexableExtras;
-  private boolean _unindexableExtrasCreatedInternally;
-  private final String _unindexableFieldSuffix;
+  private Map<String, Object> _indexableExtras = null;
+  private Map<String, Object> _unindexableExtras = null;
+  private final boolean _storeUnindexableExtras;
 
-  public ExtraFieldsContainer(boolean fillIndexableExtras, boolean fillUnindexableExtras,
-      String unindexableFieldSuffix) {
-    _fillIndexableExtras = fillIndexableExtras;
-    _fillUnindexableExtras = fillUnindexableExtras;
-    _unindexableFieldSuffix = unindexableFieldSuffix;
-
-    _indexableExtrasCreatedInternally = false;
-    _unindexableExtrasCreatedInternally = false;
-  }
-
-  public ExtraFieldsContainer(ExtraFieldsContainer parent) {
-    this(parent._fillIndexableExtras, parent._fillUnindexableExtras, parent._unindexableFieldSuffix);
-  }
-
-  public void initFromParent(ExtraFieldsContainer parent, String key) {
-    _indexableExtrasCreatedInternally = false;
-    _unindexableExtrasCreatedInternally = false;
-
-    if (null == parent) {
-      _indexableExtras = null;
-      _unindexableExtras = null;
-    } else {
-      if (null != parent._indexableExtras) {
-        _indexableExtras = (Map<String, Object>) parent._indexableExtras.get(key);
-      }
-      if (null != parent._unindexableExtras) {
-        _unindexableExtras = (Map<String, Object>) parent._unindexableExtras.get(key);
-      }
-    }
-  }
-
-  public void addChild(String childKey, ExtraFieldsContainer child) {
-    if (_fillIndexableExtras && child._indexableExtrasCreatedInternally) {
-      addToIndexableExtras(childKey, child._indexableExtras);
-    }
-    if (_fillUnindexableExtras && child._unindexableExtrasCreatedInternally) {
-      addToUnindexableExtras(childKey, child._unindexableExtras);
-    }
-  }
-
-  public void addEntry(String key, Object value) {
-    if (_fillUnindexableExtras && key.endsWith(_unindexableFieldSuffix)) {
-      addToUnindexableExtras(key, value);
-    } else if (_fillIndexableExtras) {
-      if (!_fillUnindexableExtras || !(value instanceof Map)) {
-        addToIndexableExtras(key, value);
-      } else {
-        // Explore the nested json if there's a possibility it could contain a
-        // noIndex field
-        ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(this);
-        childExtraFieldsContainer.initFromParent(this, key);
-        processNestedField((Map<String, Object>) value, childExtraFieldsContainer);
-        addChild(key, childExtraFieldsContainer);
-      }
-    }
-  }
-
-  private void processNestedField(Map<String, Object> record, ExtraFieldsContainer extraFieldsContainer) {
-    ExtraFieldsContainer childExtraFieldsContainer = new ExtraFieldsContainer(extraFieldsContainer);
-    for (Map.Entry<String, Object> entry : record.entrySet()) {
-      String recordKey = entry.getKey();
-      Object recordValue = entry.getValue();
-      if (recordKey.endsWith(_unindexableFieldSuffix)) {
-        extraFieldsContainer.addToUnindexableExtras(recordKey, recordValue);
-      } else if (recordValue instanceof Map) {
-        childExtraFieldsContainer.initFromParent(extraFieldsContainer, recordKey);
-        processNestedField((Map<String, Object>) recordValue, childExtraFieldsContainer);
-        extraFieldsContainer.addChild(recordKey, childExtraFieldsContainer);
-      } else {
-        extraFieldsContainer.addToIndexableExtras(recordKey, recordValue);
-      }
-    }
-  }
-
-  private void addToIndexableExtras(String key, Object value) {
-    if (null == _indexableExtras) {
-      _indexableExtras = new HashMap<>();
-      _indexableExtrasCreatedInternally = true;
-    }
-    _indexableExtras.put(key, value);
-  }
-
-  private void addToUnindexableExtras(String key, Object value) {
-    if (null == _unindexableExtras) {
-      _unindexableExtras = new HashMap<>();
-      _unindexableExtrasCreatedInternally = true;
-    }
-    _unindexableExtras.put(key, value);
+  ExtraFieldsContainer(boolean storeUnindexableExtras) {
+    _storeUnindexableExtras = storeUnindexableExtras;
   }
 
   public Map<String, Object> getIndexableExtras() {
@@ -395,5 +471,44 @@ class ExtraFieldsContainer {
 
   public Map<String, Object> getUnindexableExtras() {
     return _unindexableExtras;
+  }
+
+  /**
+   * Adds the given kv-pair to the indexable extras field
+   */
+  public void addIndexableEntry(String key, Object value) {
+    if (null == _indexableExtras) {
+      _indexableExtras = new HashMap<>();
+    }
+    _indexableExtras.put(key, value);
+  }
+
+  /**
+   * Adds the given kv-pair to the unindexable extras field (if any)
+   */
+  public void addUnindexableEntry(String key, Object value) {
+    if (!_storeUnindexableExtras) {
+      return;
+    }
+    if (null == _unindexableExtras) {
+      _unindexableExtras = new HashMap<>();
+    }
+    _unindexableExtras.put(key, value);
+  }
+
+  /**
+   * Given a container corresponding to a child node, attach the extras from the child node to the extras in this node
+   * at the given key.
+   */
+  public void addChild(String key, ExtraFieldsContainer child) {
+    Map<String, Object> childIndexableFields = child.getIndexableExtras();
+    if (null != childIndexableFields) {
+      addIndexableEntry(key, childIndexableFields);
+    }
+
+    Map<String, Object> childUnindexableFields = child.getUnindexableExtras();
+    if (null != childUnindexableFields) {
+      addUnindexableEntry(key, childUnindexableFields);
+    }
   }
 }

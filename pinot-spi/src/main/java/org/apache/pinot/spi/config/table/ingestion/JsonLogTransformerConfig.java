@@ -21,6 +21,7 @@ package org.apache.pinot.spi.config.table.ingestion;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
+import com.google.common.base.Preconditions;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.pinot.spi.config.BaseJsonConfig;
@@ -41,17 +42,21 @@ public class JsonLogTransformerConfig extends BaseJsonConfig {
   private final Set<String> _fieldPathsToDrop;
 
   @JsonCreator
-  public JsonLogTransformerConfig(@JsonProperty("indexableExtrasField") @Nullable String indexableExtrasField,
+  public JsonLogTransformerConfig(@JsonProperty("indexableExtrasField") String indexableExtrasField,
       @JsonProperty("unindexableExtrasField") @Nullable String unindexableExtrasField,
       @JsonProperty("unindexableFieldSuffix") @Nullable String unindexableFieldSuffix,
       @JsonProperty("fieldPathsToDrop") @Nullable Set<String> fieldPathsToDrop) {
+    Preconditions.checkArgument(indexableExtrasField != null, "indexableExtrasField must be set");
+    if (null != unindexableExtrasField) {
+      Preconditions.checkArgument(null != unindexableFieldSuffix,
+          "unindexableExtrasSuffix must be set if unindexableExtrasField is set");
+    }
     _indexableExtrasField = indexableExtrasField;
     _unindexableExtrasField = unindexableExtrasField;
     _unindexableFieldSuffix = unindexableFieldSuffix;
     _fieldPathsToDrop = fieldPathsToDrop;
   }
 
-  @Nullable
   public String getIndexableExtrasField() {
     return _indexableExtrasField;
   }
