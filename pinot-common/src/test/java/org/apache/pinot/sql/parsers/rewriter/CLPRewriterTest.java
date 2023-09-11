@@ -70,9 +70,9 @@ public class CLPRewriterTest {
     //  where every AND/OR only has two operands whereas clpMatch generates queries with AND/OR which can have N
     //  operands
 //    testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, ' INFO var1')",
-//        "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, '\" INFO \"') AND TEXT_MATCH(message_dictionaryVars, "
-//            + "'\"var1\"') AND REGEXP_LIKE(clpDecode(message_logtype, message_dictionaryVars, message_encodedVars, "
-//            + "''), '^ INFO var1$')");
+//        "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, '\" INFO \"') AND"
+//            + " TEXT_MATCH(message_dictionaryVars, '\"var1\"') AND REGEXP_LIKE(clpDecode(message_logtype, "
+//            + "message_dictionaryVars, message_encodedVars, ''), '^ INFO var1$')");
 
     // Test rewrite with Lucene reserved characters
     testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '* xyz::zyx *')",
