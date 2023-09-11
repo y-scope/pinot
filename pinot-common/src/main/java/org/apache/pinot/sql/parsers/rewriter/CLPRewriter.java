@@ -441,7 +441,9 @@ public class CLPRewriter implements QueryRewriter {
 
       // Add any dictionary variables
       for (ByteSegment dictVar : subquery.getDictVars()) {
-        f = createStringColumnMatchFunction(SqlKind.EQUALS.name(), dictionaryVarsColumnName, dictVar.toString());
+        String textMatchQuery = "\"" + QueryParser.escape(dictVar.toString()) + "\"";
+        f = createStringColumnMatchFunction(_TEXT_MATCH_LOWERCASE_FUNCTION_NAME, dictionaryVarsColumnName,
+            textMatchQuery);
         topLevelFunction.addToOperands(new Expression(ExpressionType.FUNCTION).setFunctionCall(f));
       }
 
@@ -560,7 +562,11 @@ public class CLPRewriter implements QueryRewriter {
         return null;
       }
     } else {
-      func = createStringColumnMatchFunction(SqlKind.EQUALS.name(), columnName, query);
+      String textMatchQuery = "\"" + QueryParser.escape(query) + "\"";
+      func =
+          createStringColumnMatchFunction(_TEXT_MATCH_LOWERCASE_FUNCTION_NAME, columnName, textMatchQuery);
+      // NOTE: We rely on an external REGEXP_LIKE(clpDecode(...)) call to validate accuracy. If that's removed, we
+      // should add a REGEXP_LIKE(logtype, wildcardQueryToRegex(query)) call here
     }
     return func;
   }
