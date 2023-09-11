@@ -57,13 +57,18 @@ public class CLPRewriterTest {
   public void testClpMatchRewrite() {
     // clpMatch rewrite using column group
     testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '* xyz *')",
-        "SELECT * FROM clpTable WHERE message_logtype LIKE '% xyz %' AND clpDecode(message_logtype, "
-            + "message_dictionaryVars, message_encodedVars) LIKE '% xyz %'");
+        "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, 'xyz') AND REGEXP_LIKE(clpDecode(message_logtype, "
+            + "message_dictionaryVars, message_encodedVars, ''), '.* xyz .*')");
     // clpMatch rewrite using individual columns
     testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message_logtype, message_dictionaryVars, "
             + "message_encodedVars, '* xyz *')",
-        "SELECT * FROM clpTable WHERE message_logtype LIKE '% xyz %' AND clpDecode(message_logtype, "
-            + "message_dictionaryVars, message_encodedVars) LIKE '% xyz %'");
+        "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, 'xyz') AND REGEXP_LIKE(clpDecode(message_logtype, "
+            + "message_dictionaryVars, message_encodedVars, ''), '.* xyz .*')");
+
+    // Test rewrite with Lucene reserved characters
+    testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '* xyz::zyx *')",
+        "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, 'xyz AND zyx') AND REGEXP_LIKE(clpDecode"
+            + "(message_logtype, message_dictionaryVars, message_encodedVars, ''), '.* xyz::zyx .*')");
   }
 
   @Test

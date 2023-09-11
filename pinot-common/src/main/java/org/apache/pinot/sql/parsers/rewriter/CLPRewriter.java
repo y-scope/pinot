@@ -33,6 +33,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.pinot.common.function.TransformFunctionType;
 import org.apache.pinot.common.request.Expression;
 import org.apache.pinot.common.request.ExpressionType;
@@ -812,9 +813,6 @@ public class CLPRewriter implements QueryRewriter {
     private static final char[] _LUCENE_REGEX_RESERVED_CHARS = {
         '+', '-', '&', '|', '(', ')', '{', '}', '[', ']', '^', '"', '~', '\\', '<', '>', '.'
     };
-    private static final char[] _LUCENE_QUERY_RESERVED_CHARS = {
-        '+', '-', '&', '|', '(', ')', '{', '}', '[', ']', '^', '"', '~', '*', '?', '\\', '!', ':', '/'
-    };
 
     private final boolean _containsWildcards;
 
@@ -858,22 +856,7 @@ public class CLPRewriter implements QueryRewriter {
     }
 
     public void encodeIntoLuceneQuery(StringBuilder stringBuilder) {
-      int unCopiedIdx = _beginIdx;
-      for (int queryIdx = _beginIdx; queryIdx < _endIdx; queryIdx++) {
-        char queryChar = _value.charAt(queryIdx);
-
-        for (int i = 0; i < _LUCENE_QUERY_RESERVED_CHARS.length; i++) {
-          if (queryChar == _LUCENE_QUERY_RESERVED_CHARS[i]) {
-            stringBuilder.append(_value, unCopiedIdx, queryIdx);
-            stringBuilder.append('\\');
-            unCopiedIdx = queryIdx;
-            break;
-          }
-        }
-      }
-      if (unCopiedIdx < _endIdx) {
-        stringBuilder.append(_value, unCopiedIdx, _endIdx);
-      }
+      stringBuilder.append(QueryParser.escape(_value.substring(_beginIdx, _endIdx)));
     }
   }
 }
