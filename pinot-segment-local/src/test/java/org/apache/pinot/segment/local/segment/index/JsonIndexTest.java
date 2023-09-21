@@ -210,7 +210,7 @@ public class JsonIndexTest {
   }
 
   @Test
-  public void testFilteringLongValues()
+  public void testTruncatingLongValues()
       throws Exception {
     String[] records = new String[]{
         "{\"key1\":\"value1\",\"key2\":\"longValue2\",\"nestedKey3\":{\"key4\":\"longValue4\"}}",
@@ -244,12 +244,18 @@ public class JsonIndexTest {
 
         matchingDocIds = getMatchingDocIds(indexReader, "key2='longValue2'");
         Assert.assertTrue(matchingDocIds.isEmpty());
+        matchingDocIds = getMatchingDocIds(indexReader, "key2='longVa$'");
+        Assert.assertEquals(new int[]{0}, matchingDocIds.toArray());
 
         matchingDocIds = getMatchingDocIds(indexReader, "nestedKey3.key4='longValue4'");
         Assert.assertTrue(matchingDocIds.isEmpty());
+        matchingDocIds = getMatchingDocIds(indexReader, "nestedKey3.key4='longVa$'");
+        Assert.assertEquals(new int[]{0}, matchingDocIds.toArray());
 
         matchingDocIds = getMatchingDocIds(indexReader, "key5='longValue5'");
         Assert.assertTrue(matchingDocIds.isEmpty());
+        matchingDocIds = getMatchingDocIds(indexReader, "key5='longVa$'");
+        Assert.assertEquals(new int[]{1}, matchingDocIds.toArray());
 
         matchingDocIds = getMatchingDocIds(indexReader, "key6='value6'");
         Assert.assertEquals(new int[]{1}, matchingDocIds.toArray());
