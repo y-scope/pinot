@@ -164,6 +164,8 @@ public class CLPRewriter implements QueryRewriter {
         Function f = op0.getFunctionCall();
         replaceClpMatchEquals(op0, f);
         return;
+      } else if (functionName.equals(SqlKind.FILTER.lowerName)) {
+        isFilterExpression = true;
       }
 
       // Function isn't a CLP function that needs rewriting, but the arguments might be, so we recursively process them.

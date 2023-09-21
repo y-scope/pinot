@@ -74,6 +74,19 @@ public class CLPRewriterTest {
 //            + " TEXT_MATCH(message_dictionaryVars, '\"var1\"') AND REGEXP_LIKE(clpDecode(message_logtype, "
 //            + "message_dictionaryVars, message_encodedVars, ''), '^ INFO var1$')");
 
+    // clpMatch rewrite in FILTER expression
+    testQueryRewrite("SELECT COUNT(*) FILTER(WHERE clpMatch(message, '* xyz *')) FROM clpTable",
+        "SELECT COUNT(*) FILTER(WHERE TEXT_MATCH(message_logtype, 'xyz') AND REGEXP_LIKE(clpDecode(message_logtype, "
+            + "message_dictionaryVars, message_encodedVars, ''), '.* xyz .*')) FROM clpTable");
+    // clpMatch(...) = true rewrite in FILTER expression
+    testQueryRewrite("SELECT COUNT(*) FILTER(WHERE clpMatch(message, '* xyz *') = true) FROM clpTable",
+        "SELECT COUNT(*) FILTER(WHERE TEXT_MATCH(message_logtype, 'xyz') AND REGEXP_LIKE(clpDecode(message_logtype, "
+            + "message_dictionaryVars, message_encodedVars, ''), '.* xyz .*')) FROM clpTable");
+    // NOT clpMatch(...) rewrite in FILTER expression
+    testQueryRewrite("SELECT COUNT(*) FILTER(WHERE NOT clpMatch(message, '* xyz *')) FROM clpTable",
+        "SELECT COUNT(*) FILTER(WHERE NOT (TEXT_MATCH(message_logtype, 'xyz') AND REGEXP_LIKE(clpDecode"
+            + "(message_logtype, message_dictionaryVars, message_encodedVars, ''), '.* xyz .*'))) FROM clpTable");
+
     // Test rewrite with Lucene reserved characters
     testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '* xyz::zyx *')",
         "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, 'xyz AND zyx') AND REGEXP_LIKE(clpDecode"
