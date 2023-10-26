@@ -39,7 +39,6 @@ import javax.annotation.Nullable;
  *                 the excluded paths will also be excluded, e.g. "$.a.b.c" will be excluded when "$.a.b" is configured
  *                 to be excluded.
  * - excludeFields: Exclude the given fields, e.g. "b", "c", even if it is under the included paths.
- * - maxValueLength: Exclude field values which are longer than this length. A value of "0" disables this filter.
  */
 public class JsonIndexConfig extends IndexConfig {
   public static final JsonIndexConfig DISABLED = new JsonIndexConfig(true);
@@ -50,7 +49,6 @@ public class JsonIndexConfig extends IndexConfig {
   private Set<String> _includePaths;
   private Set<String> _excludePaths;
   private Set<String> _excludeFields;
-  private int _maxValueLength = 0;
 
   public JsonIndexConfig() {
     super(false);
@@ -66,8 +64,7 @@ public class JsonIndexConfig extends IndexConfig {
       @JsonProperty("disableCrossArrayUnnest") boolean disableCrossArrayUnnest,
       @JsonProperty("includePaths") @Nullable Set<String> includePaths,
       @JsonProperty("excludePaths") @Nullable Set<String> excludePaths,
-      @JsonProperty("excludeFields") @Nullable Set<String> excludeFields,
-      @JsonProperty("maxValueLength") int maxValueLength) {
+      @JsonProperty("excludeFields") @Nullable Set<String> excludeFields) {
     super(disabled);
     _maxLevels = maxLevels;
     _excludeArray = excludeArray;
@@ -75,7 +72,6 @@ public class JsonIndexConfig extends IndexConfig {
     _includePaths = includePaths;
     _excludePaths = excludePaths;
     _excludeFields = excludeFields;
-    _maxValueLength = maxValueLength;
   }
 
   public int getMaxLevels() {
@@ -134,14 +130,6 @@ public class JsonIndexConfig extends IndexConfig {
     _excludeFields = excludeFields;
   }
 
-  public int getMaxValueLength() {
-    return _maxValueLength;
-  }
-
-  public void setMaxValueLength(int maxValueLength) {
-    _maxValueLength = maxValueLength;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -157,12 +145,12 @@ public class JsonIndexConfig extends IndexConfig {
     return _maxLevels == config._maxLevels && _excludeArray == config._excludeArray
         && _disableCrossArrayUnnest == config._disableCrossArrayUnnest && Objects.equals(_includePaths,
         config._includePaths) && Objects.equals(_excludePaths, config._excludePaths) && Objects.equals(_excludeFields,
-        config._excludeFields) && _maxValueLength == config._maxValueLength;
+        config._excludeFields);
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(super.hashCode(), _maxLevels, _excludeArray, _disableCrossArrayUnnest, _includePaths,
-        _excludePaths, _excludeFields, _maxValueLength);
+        _excludePaths, _excludeFields);
   }
 }
