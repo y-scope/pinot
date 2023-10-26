@@ -26,6 +26,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.apache.pinot.common.metrics.ServerMeter;
+import org.apache.pinot.common.metrics.ServerMetrics;
 import org.apache.pinot.common.request.context.ExpressionContext;
 import org.apache.pinot.common.request.context.FilterContext;
 import org.apache.pinot.common.request.context.RequestContextUtils;
@@ -34,11 +36,14 @@ import org.apache.pinot.common.request.context.predicate.InPredicate;
 import org.apache.pinot.common.request.context.predicate.NotEqPredicate;
 import org.apache.pinot.common.request.context.predicate.NotInPredicate;
 import org.apache.pinot.common.request.context.predicate.Predicate;
+import org.apache.pinot.common.utils.LLCSegmentName;
 import org.apache.pinot.segment.local.segment.creator.impl.inv.json.BaseJsonIndexCreator;
 import org.apache.pinot.segment.spi.index.creator.JsonIndexCreator;
 import org.apache.pinot.segment.spi.index.mutable.MutableJsonIndex;
+import org.apache.pinot.segment.spi.index.mutable.provider.MutableIndexContext;
 import org.apache.pinot.spi.config.table.JsonIndexConfig;
 import org.apache.pinot.spi.exception.BadQueryRequestException;
+import org.apache.pinot.spi.metrics.PinotMeter;
 import org.apache.pinot.spi.utils.JsonUtils;
 import org.apache.pinot.sql.parsers.CalciteSqlParser;
 import org.roaringbitmap.IntConsumer;
@@ -59,6 +64,12 @@ public class MutableJsonIndexImpl implements MutableJsonIndex {
   private int _nextDocId;
   private int _nextFlattenedDocId;
 
+  private final ServerMetrics _serverMetrics = ServerMetrics.get();
+  PinotMeter _realtimeJsonIdxSkippedValueAvgLenMeter = null;
+  PinotMeter _realtimeJsonIdxSkippedValueMaxLenMeter = null;
+  PinotMeter _realtimeJsonIdxSkippedValueCountMeter = null;
+  private String _tableName;
+
   public MutableJsonIndexImpl(JsonIndexConfig jsonIndexConfig) {
     _jsonIndexConfig = jsonIndexConfig;
     _postingListMap = new HashMap<>();
@@ -69,6 +80,14 @@ public class MutableJsonIndexImpl implements MutableJsonIndex {
     _writeLock = readWriteLock.writeLock();
   }
 
+  public MutableJsonIndexImpl(MutableIndexContext context, JsonIndexConfig jsonIndexConfig) {
+    this(jsonIndexConfig);
+    LLCSegmentName segmentName = LLCSegmentName.of(context.getSegmentName());
+    if (null != segmentName) {
+      _tableName = segmentName.getTableName();
+    }
+  }
+
   /**
    * Adds the next json value.
    */
@@ -76,8 +95,19 @@ public class MutableJsonIndexImpl implements MutableJsonIndex {
   public void add(String jsonString)
       throws IOException {
     try {
+      JsonUtils.SkippedValueStats skippedValueStats = new JsonUtils.SkippedValueStats();
       List<Map<String, String>> flattenedRecords =
-          JsonUtils.flatten(JsonUtils.stringToJsonNode(jsonString), _jsonIndexConfig);
+          JsonUtils.flatten(JsonUtils.stringToJsonNode(jsonString), _jsonIndexConfig, skippedValueStats);
+      if (null != _tableName) {
+        _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_AVG_LEN,
+            skippedValueStats.getTotalLength() / skippedValueStats.getNumSkipped(),
+            _realtimeJsonIdxSkippedValueAvgLenMeter);
+        _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_MAX_LEN,
+            skippedValueStats.getMaxLength(), _realtimeJsonIdxSkippedValueMaxLenMeter);
+        _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_COUNT,
+            skippedValueStats.getNumSkipped(), _realtimeJsonIdxSkippedValueCountMeter);
+      }
+
       _writeLock.lock();
       try {
         addFlattenedRecords(flattenedRecords);

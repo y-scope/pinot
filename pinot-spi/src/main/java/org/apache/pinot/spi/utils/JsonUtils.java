@@ -352,8 +352,13 @@ public class JsonUtils {
    * </pre>
    */
   public static List<Map<String, String>> flatten(JsonNode node, JsonIndexConfig jsonIndexConfig) {
+    return flatten(node, jsonIndexConfig, null);
+  }
+
+  public static List<Map<String, String>> flatten(JsonNode node, JsonIndexConfig jsonIndexConfig,
+      SkippedValueStats skippedValueStats) {
     try {
-      return flatten(node, jsonIndexConfig, 0, "$", false);
+      return flatten(node, jsonIndexConfig, 0, "$", false, skippedValueStats);
     } catch (OutOfMemoryError oom) {
       throw new OutOfMemoryError(
           String.format("Flattening JSON node: %s with config: %s requires too much memory, please adjust the config",
@@ -365,7 +370,7 @@ public class JsonUtils {
   }
 
   private static List<Map<String, String>> flatten(JsonNode node, JsonIndexConfig jsonIndexConfig, int level,
-      String path, boolean includePathMatched) {
+      String path, boolean includePathMatched, SkippedValueStats skippedValueStats) {
     // Null
     if (node.isNull()) {
       return Collections.emptyList();
@@ -376,6 +381,10 @@ public class JsonUtils {
       String valueAsText = node.asText();
       int maxValueLength = jsonIndexConfig.getMaxValueLength();
       if (0 < maxValueLength && maxValueLength < valueAsText.length()) {
+        if (null != skippedValueStats) {
+          skippedValueStats.addSkippedValue(valueAsText);
+        }
+
         valueAsText = SKIPPED_VALUE_REPLACEMENT;
       }
       return Collections.singletonList(Collections.singletonMap(VALUE_KEY, valueAsText));
@@ -409,7 +418,8 @@ public class JsonUtils {
         JsonNode childNode = node.get(i);
         String arrayIndexValue = Integer.toString(i);
         List<Map<String, String>> childResults =
-            flatten(childNode, jsonIndexConfig, level + 1, childPath, includeResult._includePathMatched);
+            flatten(childNode, jsonIndexConfig, level + 1, childPath, includeResult._includePathMatched,
+                skippedValueStats);
         for (Map<String, String> childResult : childResults) {
           Map<String, String> result = new TreeMap<>();
           for (Map.Entry<String, String> entry : childResult.entrySet()) {
@@ -446,7 +456,8 @@ public class JsonUtils {
       }
       JsonNode childNode = fieldEntry.getValue();
       List<Map<String, String>> childResults =
-          flatten(childNode, jsonIndexConfig, level + 1, childPath, includeResult._includePathMatched);
+          flatten(childNode, jsonIndexConfig, level + 1, childPath, includeResult._includePathMatched,
+              skippedValueStats);
       int numChildResults = childResults.size();
 
       // Empty list - skip
@@ -712,6 +723,30 @@ public class JsonUtils {
         default:
           throw new UnsupportedOperationException("Unsupported field type: " + fieldType + " for field: " + name);
       }
+    }
+  }
+
+  public static class SkippedValueStats {
+    private int _numSkipped = 0;
+    private int _maxLength = 0;
+    private int _totalLength = 0;
+
+    public void addSkippedValue(String value) {
+      _totalLength += value.length();
+      _numSkipped++;
+      _maxLength = Math.max(_maxLength, value.length());
+    }
+
+    public int getNumSkipped() {
+      return _numSkipped;
+    }
+
+    public int getMaxLength() {
+      return _maxLength;
+    }
+
+    public int getTotalLength() {
+      return _totalLength;
     }
   }
 }
