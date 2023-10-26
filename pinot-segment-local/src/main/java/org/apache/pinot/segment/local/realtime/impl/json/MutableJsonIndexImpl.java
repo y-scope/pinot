@@ -99,13 +99,15 @@ public class MutableJsonIndexImpl implements MutableJsonIndex {
       List<Map<String, String>> flattenedRecords =
           JsonUtils.flatten(JsonUtils.stringToJsonNode(jsonString), _jsonIndexConfig, skippedValueStats);
       if (null != _tableName) {
-        _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_AVG_LEN,
-            skippedValueStats.getTotalLength() / skippedValueStats.getNumSkipped(),
-            _realtimeJsonIdxSkippedValueAvgLenMeter);
-        _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_MAX_LEN,
-            skippedValueStats.getMaxLength(), _realtimeJsonIdxSkippedValueMaxLenMeter);
-        _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_COUNT,
-            skippedValueStats.getNumSkipped(), _realtimeJsonIdxSkippedValueCountMeter);
+        int numSkipped = skippedValueStats.getNumSkipped();
+        if (numSkipped > 0) {
+          _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_COUNT, numSkipped,
+              _realtimeJsonIdxSkippedValueCountMeter);
+          _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_AVG_LEN,
+              skippedValueStats.getTotalLength() / numSkipped, _realtimeJsonIdxSkippedValueAvgLenMeter);
+          _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_MAX_LEN,
+              skippedValueStats.getMaxLength(), _realtimeJsonIdxSkippedValueMaxLenMeter);
+        }
       }
 
       _writeLock.lock();
