@@ -311,25 +311,6 @@ public class JsonUtils {
   }
 
   /**
-   * Truncates the given value to the max length specified (if any) in the JSON index config
-   * @param value
-   * @param jsonIndexConfig
-   * @return The truncated value
-   */
-  public static String truncateValueToMaxLength(String value, JsonIndexConfig jsonIndexConfig) {
-    int maxValueLength = jsonIndexConfig.getMaxValueLength();
-    if (0 < maxValueLength && maxValueLength < value.length()) {
-      value = value.substring(0, maxValueLength);
-
-      String valueTruncationSuffix = jsonIndexConfig.getValueTruncationSuffix();
-      if (null != valueTruncationSuffix) {
-        value += valueTruncationSuffix;
-      }
-    }
-    return value;
-  }
-
-  /**
    * Flattens the given json node.
    * <p>Json array will be flattened into multiple records, where each record has a special key to store the index of
    * the element.

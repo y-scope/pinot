@@ -108,9 +108,11 @@ public abstract class BaseJsonIndexCreator implements JsonIndexCreator {
         // Put both key and key-value into the posting list. Key is useful for checking if a key exists in the json.
         String key = entry.getKey();
         addToPostingList(key);
-        String value = JsonUtils.truncateValueToMaxLength(entry.getValue(), _jsonIndexConfig);
-        String keyValue = key + JsonIndexCreator.KEY_VALUE_SEPARATOR + value;
-        addToPostingList(keyValue);
+        int length = _jsonIndexConfig.getMaxValueLength();
+        if (0 == length || entry.getValue().length() <= length) {
+          String keyValue = key + JsonIndexCreator.KEY_VALUE_SEPARATOR + entry.getValue();
+          addToPostingList(keyValue);
+        }
       }
       _nextFlattenedDocId++;
     }

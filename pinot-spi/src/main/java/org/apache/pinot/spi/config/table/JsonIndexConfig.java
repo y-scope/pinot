@@ -40,7 +40,6 @@ import javax.annotation.Nullable;
  *                 to be excluded.
  * - excludeFields: Exclude the given fields, e.g. "b", "c", even if it is under the included paths.
  * - maxValueLength: Exclude field values which are longer than this length. A value of "0" disables this filter.
- * - valueTruncationSuffix: Suffix to append to values which are truncated for being over maxValueLength.
  */
 public class JsonIndexConfig extends IndexConfig {
   public static final JsonIndexConfig DISABLED = new JsonIndexConfig(true);
@@ -52,7 +51,6 @@ public class JsonIndexConfig extends IndexConfig {
   private Set<String> _excludePaths;
   private Set<String> _excludeFields;
   private int _maxValueLength = 0;
-  private String _valueTruncationSuffix = "$";
 
   public JsonIndexConfig() {
     super(false);
@@ -69,8 +67,7 @@ public class JsonIndexConfig extends IndexConfig {
       @JsonProperty("includePaths") @Nullable Set<String> includePaths,
       @JsonProperty("excludePaths") @Nullable Set<String> excludePaths,
       @JsonProperty("excludeFields") @Nullable Set<String> excludeFields,
-      @JsonProperty("maxValueLength") int maxValueLength,
-      @JsonProperty("valueTruncationSuffix") String valueTruncationSuffix) {
+      @JsonProperty("maxValueLength") int maxValueLength) {
     super(disabled);
     _maxLevels = maxLevels;
     _excludeArray = excludeArray;
@@ -79,7 +76,6 @@ public class JsonIndexConfig extends IndexConfig {
     _excludePaths = excludePaths;
     _excludeFields = excludeFields;
     _maxValueLength = maxValueLength;
-    _valueTruncationSuffix = valueTruncationSuffix;
   }
 
   public int getMaxLevels() {
@@ -146,14 +142,6 @@ public class JsonIndexConfig extends IndexConfig {
     _maxValueLength = maxValueLength;
   }
 
-  public String getValueTruncationSuffix() {
-    return _valueTruncationSuffix;
-  }
-
-  public void setValueTruncationSuffix(String valueTruncationSuffix) {
-    _valueTruncationSuffix = valueTruncationSuffix;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -169,13 +157,12 @@ public class JsonIndexConfig extends IndexConfig {
     return _maxLevels == config._maxLevels && _excludeArray == config._excludeArray
         && _disableCrossArrayUnnest == config._disableCrossArrayUnnest && Objects.equals(_includePaths,
         config._includePaths) && Objects.equals(_excludePaths, config._excludePaths) && Objects.equals(_excludeFields,
-        config._excludeFields) && _maxValueLength == config._maxValueLength
-        && _valueTruncationSuffix.equals(config._valueTruncationSuffix);
+        config._excludeFields) && _maxValueLength == config._maxValueLength;
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(super.hashCode(), _maxLevels, _excludeArray, _disableCrossArrayUnnest, _includePaths,
-        _excludePaths, _excludeFields, _maxValueLength, _valueTruncationSuffix);
+        _excludePaths, _excludeFields, _maxValueLength);
   }
 }
