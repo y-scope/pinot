@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.apache.pinot.common.metrics.ServerGauge;
 import org.apache.pinot.common.metrics.ServerMeter;
 import org.apache.pinot.common.metrics.ServerMetrics;
 import org.apache.pinot.common.request.context.ExpressionContext;
@@ -103,10 +104,10 @@ public class MutableJsonIndexImpl implements MutableJsonIndex {
         if (numSkipped > 0) {
           _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_COUNT, numSkipped,
               _realtimeJsonIdxSkippedValueCountMeter);
-          _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_AVG_LEN,
-              skippedValueStats.getTotalLength() / numSkipped, _realtimeJsonIdxSkippedValueAvgLenMeter);
-          _serverMetrics.addMeteredTableValue(_tableName, ServerMeter.REALTIME_JSON_IDX_SKIPPED_VALUE_MAX_LEN,
-              skippedValueStats.getMaxLength(), _realtimeJsonIdxSkippedValueMaxLenMeter);
+          _serverMetrics.setValueOfTableGauge(_tableName, ServerGauge.REALTIME_JSON_IDX_SKIPPED_VALUE_AVG_LEN,
+              skippedValueStats.getTotalLength() / numSkipped);
+          _serverMetrics.setValueOfTableGauge(_tableName, ServerGauge.REALTIME_JSON_IDX_SKIPPED_VALUE_MAX_LEN,
+              skippedValueStats.getMaxLength());
         }
       }
 

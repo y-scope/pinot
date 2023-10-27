@@ -47,8 +47,6 @@ public enum ServerMeter implements AbstractMetrics.Meter {
   REALTIME_OFFSET_COMMIT_EXCEPTIONS("exceptions", false),
   REALTIME_PARTITION_MISMATCH("mismatch", false),
   REALTIME_DEDUP_DROPPED("rows", false),
-  REALTIME_JSON_IDX_SKIPPED_VALUE_AVG_LEN("bytes", false),
-  REALTIME_JSON_IDX_SKIPPED_VALUE_MAX_LEN("bytes", false),
   REALTIME_JSON_IDX_SKIPPED_VALUE_COUNT("values", false),
   UPSERT_KEYS_IN_WRONG_SEGMENT("rows", false),
   PARTIAL_UPSERT_OUT_OF_ORDER("rows", false),
