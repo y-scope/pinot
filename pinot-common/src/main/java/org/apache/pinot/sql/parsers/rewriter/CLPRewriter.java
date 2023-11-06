@@ -292,9 +292,6 @@ public class CLPRewriter implements QueryRewriter {
         throw new SqlCompilationException("clpMatch: Second argument must be a literal.");
       }
       String wildcardQuery = arg1.getLiteral().getStringValue();
-      if (wildcardQuery.isEmpty()) {
-        throw new SqlCompilationException("clpMatch: Query cannot be empty.");
-      }
 
       rewriteClpMatchFunction(expression, columnGroupName + LOGTYPE_COLUMN_SUFFIX,
           columnGroupName + DICTIONARY_VARS_COLUMN_SUFFIX, columnGroupName + ENCODED_VARS_COLUMN_SUFFIX, wildcardQuery);
@@ -318,9 +315,6 @@ public class CLPRewriter implements QueryRewriter {
         throw new SqlCompilationException("clpMatch: Argument i=3 must be a literal.");
       }
       String wildcardQuery = arg1.getLiteral().getStringValue();
-      if (wildcardQuery.isEmpty()) {
-        throw new SqlCompilationException("clpMatch: Query cannot be empty.");
-      }
 
       rewriteClpMatchFunction(expression, logtypeColumnName, dictionaryVarsColumnName, encodedVarsColumnName,
           wildcardQuery);
@@ -352,6 +346,16 @@ public class CLPRewriter implements QueryRewriter {
       }
     } else if (wildcardQuery.startsWith("\\$")) {
       wildcardQuery = wildcardQuery.substring(1);
+    }
+
+    if (wildcardQuery.isEmpty()) {
+      Function newFunction = new Function(SqlKind.EQUALS.name());
+      newFunction.addToOperands(
+          new Expression(ExpressionType.IDENTIFIER).setIdentifier(new Identifier(logtypeColumnName)));
+      newFunction.addToOperands(
+          new Expression(ExpressionType.LITERAL).setLiteral(Literal.stringValue("")));
+      expression.setFunctionCall(newFunction);
+      return;
     }
 
     EightByteClpWildcardQueryEncoder queryEncoder =

@@ -65,6 +65,15 @@ public class CLPRewriterTest {
         "SELECT * FROM clpTable WHERE TEXT_MATCH(message_logtype, 'xyz') AND REGEXP_LIKE(clpDecode(message_logtype, "
             + "message_dictionaryVars, message_encodedVars, ''), '.* xyz .*')");
 
+    // clpMatch rewrite empty query
+    testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '')",
+        "SELECT * FROM clpTable WHERE message_logtype = ''");
+    testQueryRewrite(
+        "SELECT * FROM clpTable WHERE clpMatch(message_logtype, message_dictionaryVars, message_encodedVars, '')",
+        "SELECT * FROM clpTable WHERE message_logtype = ''");
+    testQueryRewrite("SELECT * FROM clpTable WHERE clpMatch(message, '$approx:')",
+        "SELECT * FROM clpTable WHERE message_logtype = ''");
+
     // Test rewrite with exact logtype and dictionary variables
     // TODO This test fails because CalciteSqlParser.compileToPinotQuery(expected) translates the query into a form
     //  where every AND/OR only has two operands whereas clpMatch generates queries with AND/OR which can have N
