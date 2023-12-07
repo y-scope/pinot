@@ -36,6 +36,7 @@ public enum ServerMeter implements AbstractMetrics.Meter {
   DELETE_TABLE_FAILURES("tables", false),
   REALTIME_ROWS_CONSUMED("rows", true),
   REALTIME_BYTES_CONSUMED("bytes", true),
+  REALTIME_BYTES_DROPPED("bytes", true),
   REALTIME_ROWS_FILTERED("rows", false),
   INVALID_REALTIME_ROWS_DROPPED("rows", false),
   INCOMPLETE_REALTIME_ROWS_CONSUMED("rows", false),
