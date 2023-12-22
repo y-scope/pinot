@@ -202,6 +202,7 @@ public enum TransformFunctionType {
   CLP_DECODE("clpDecode", ReturnTypes.VARCHAR_2000_NULLABLE, OperandTypes.family(
       ImmutableList.of(SqlTypeFamily.ANY, SqlTypeFamily.ANY, SqlTypeFamily.ANY, SqlTypeFamily.CHARACTER),
       ordinal -> ordinal > 2), "clp_decode"),
+  CLP_ENCODED_VARS_MATCH("clpEncodedVarsMatch", "clp_encoded_vars_match"),
 
   // Regexp functions
   REGEXP_EXTRACT("regexpExtract", "regexp_extract"),
