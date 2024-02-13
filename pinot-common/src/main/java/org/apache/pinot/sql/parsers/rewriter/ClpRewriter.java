@@ -89,10 +89,13 @@ public class ClpRewriter implements QueryRewriter {
 
   private static final String _CLPDECODE_LOWERCASE_TRANSFORM_NAME =
       TransformFunctionType.CLP_DECODE.getName().toLowerCase();
+  private static final String _CLPMATCH_LOWERCASE_FUNCTION_NAME = "clpmatch";
+
   private static final String _REGEXP_LIKE_LOWERCASE_FUNCTION_NAME = Predicate.Type.REGEXP_LIKE.name();
   private static final char[] _NON_WILDCARD_REGEX_META_CHARACTERS =
       {'^', '$', '.', '{', '}', '[', ']', '(', ')', '+', '|', '<', '>', '-', '/', '=', '!'};
-  private static final String _CLPMATCH_LOWERCASE_FUNCTION_NAME = "clpmatch";
+  private static final char _ZERO_OR_MORE_CHARS_WILDCARD = '*';
+  private static final char _SINGLE_CHAR_WILDCARD = '?';
 
   @Override
   public PinotQuery rewrite(PinotQuery pinotQuery) {
@@ -562,7 +565,7 @@ public class ClpRewriter implements QueryRewriter {
     StringBuilder queryWithSqlWildcards = new StringBuilder();
 
     // Add begin anchor if necessary
-    if (!wildcardQuery.isEmpty() && '*' != wildcardQuery.charAt(0)) {
+    if (!wildcardQuery.isEmpty() && _ZERO_OR_MORE_CHARS_WILDCARD != wildcardQuery.charAt(0)) {
       queryWithSqlWildcards.append('^');
     }
 
@@ -574,10 +577,14 @@ public class ClpRewriter implements QueryRewriter {
       } else {
         if ('\\' == queryChar) {
           isEscaped = true;
-        } else if (isWildcard(queryChar)) {
+        } else if (_ZERO_OR_MORE_CHARS_WILDCARD == queryChar) {
           queryWithSqlWildcards.append(wildcardQuery, uncopiedIdx, queryIdx);
           queryWithSqlWildcards.append('.');
           uncopiedIdx = queryIdx;
+        } else if (_SINGLE_CHAR_WILDCARD == queryChar) {
+          queryWithSqlWildcards.append(wildcardQuery, uncopiedIdx, queryIdx);
+          queryWithSqlWildcards.append('.');
+          uncopiedIdx = queryIdx + 1;
         } else {
           for (final char metaChar : _NON_WILDCARD_REGEX_META_CHARACTERS) {
             if (metaChar == queryChar) {
@@ -595,19 +602,11 @@ public class ClpRewriter implements QueryRewriter {
     }
 
     // Add end anchor if necessary
-    if (!wildcardQuery.isEmpty() && '*' != wildcardQuery.charAt(wildcardQuery.length() - 1)) {
+    if (!wildcardQuery.isEmpty() && _ZERO_OR_MORE_CHARS_WILDCARD != wildcardQuery.charAt(wildcardQuery.length() - 1)) {
       queryWithSqlWildcards.append('$');
     }
 
     return queryWithSqlWildcards.toString();
-  }
-
-  /**
-   * @param c
-   * @return Whether the given character is a wildcard.
-   */
-  private static boolean isWildcard(char c) {
-    return '*' == c || '?' == c;
   }
 
   /**
