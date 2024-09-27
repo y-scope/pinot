@@ -37,7 +37,7 @@ import org.apache.pinot.spi.data.FieldSpec.DataType;
  */
 public class MultiValueFixedByteRawIndexCreator implements ForwardIndexCreator {
 
-  private final VarByteChunkWriter _indexWriter;
+  protected final VarByteChunkWriter _indexWriter;
   private final DataType _valueType;
 
   /**
@@ -75,8 +75,7 @@ public class MultiValueFixedByteRawIndexCreator implements ForwardIndexCreator {
       DataType valueType, int maxNumberOfMultiValueElements, boolean deriveNumDocsPerChunk, int writerVersion,
       int targetMaxChunkSizeBytes, int targetDocsPerChunk)
       throws IOException {
-    // Store the length followed by the values
-    int totalMaxLength = Integer.BYTES + (maxNumberOfMultiValueElements * valueType.getStoredType().size());
+    int totalMaxLength = computeTotalMaxLength(maxNumberOfMultiValueElements, valueType);
     if (writerVersion < VarByteChunkForwardIndexWriterV4.VERSION) {
       int numDocsPerChunk = deriveNumDocsPerChunk ? Math.max(targetMaxChunkSizeBytes / (totalMaxLength
           + VarByteChunkForwardIndexWriter.CHUNK_HEADER_ENTRY_ROW_OFFSET_SIZE), 1) : targetDocsPerChunk;
@@ -89,6 +88,10 @@ public class MultiValueFixedByteRawIndexCreator implements ForwardIndexCreator {
       _indexWriter = new VarByteChunkForwardIndexWriterV4(indexFile, compressionType, chunkSize);
     }
     _valueType = valueType;
+  }
+
+  protected int computeTotalMaxLength(int maxNumberOfMultiValueElements, DataType valueType) {
+    return Integer.BYTES + (maxNumberOfMultiValueElements * valueType.getStoredType().size());
   }
 
   @Override

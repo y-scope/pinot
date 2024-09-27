@@ -31,7 +31,7 @@ import org.apache.pinot.spi.data.FieldSpec.DataType;
  * LONG, FLOAT, DOUBLE).
  * <p>For data layout, please refer to the documentation for {@link VarByteChunkForwardIndexWriter}
  */
-public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIndexReader {
+public class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIndexReader {
   private static final int ROW_OFFSET_SIZE = VarByteChunkForwardIndexWriter.CHUNK_HEADER_ENTRY_ROW_OFFSET_SIZE;
 
   private final int _maxChunkSize;
@@ -54,7 +54,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public int getIntMV(int docId, int[] valueBuffer, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getInt();
     }
@@ -64,7 +64,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public int[] getIntMV(int docId, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     int[] valueBuffer = new int[numValues];
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getInt();
@@ -75,7 +75,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public int getLongMV(int docId, long[] valueBuffer, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getLong();
     }
@@ -85,7 +85,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public long[] getLongMV(int docId, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     long[] valueBuffer = new long[numValues];
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getLong();
@@ -96,7 +96,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public int getFloatMV(int docId, float[] valueBuffer, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getFloat();
     }
@@ -106,7 +106,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public float[] getFloatMV(int docId, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     float[] valueBuffer = new float[numValues];
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getFloat();
@@ -117,7 +117,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public int getDoubleMV(int docId, double[] valueBuffer, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getDouble();
     }
@@ -127,7 +127,7 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
   @Override
   public double[] getDoubleMV(int docId, ChunkReaderContext context) {
     ByteBuffer byteBuffer = slice(docId, context);
-    int numValues = byteBuffer.getInt();
+    int numValues = getNumValuesMV(byteBuffer);
     double[] valueBuffer = new double[numValues];
     for (int i = 0; i < numValues; i++) {
       valueBuffer[i] = byteBuffer.getDouble();
@@ -141,7 +141,11 @@ public final class FixedByteChunkMVForwardIndexReader extends BaseChunkForwardIn
     return byteBuffer.getInt();
   }
 
-  private ByteBuffer slice(int docId, ChunkReaderContext context) {
+  protected int getNumValuesMV(ByteBuffer byteBuffer) {
+    return byteBuffer.getInt();
+  }
+
+  protected ByteBuffer slice(int docId, ChunkReaderContext context) {
     if (_isCompressed) {
       return sliceBytesCompressed(docId, context);
     } else {
