@@ -171,7 +171,7 @@ public class VarByteChunkV5Test extends VarByteChunkV4Test {
     }
 
     // For the input data, the explicit length compressed MV fixed byte raw forward index is expected to be at least
-    // 2x larger size in explicit length variant in V4 compared to the new implicit length variant in V5
+    // 2x larger on-disk size in explicit length variant in V4 compared to the new implicit length variant in V5
     long expectedImplicitLengthFwdIndexMaxSize = Math.round(implicitLengthFwdIndexFile.length() * 2.0d);
     Assert.assertTrue(expectedImplicitLengthFwdIndexMaxSize < explicitLengthFwdIndexFile.length());
 
