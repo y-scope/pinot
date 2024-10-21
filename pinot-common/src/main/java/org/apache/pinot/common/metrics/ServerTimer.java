@@ -53,6 +53,16 @@ public enum ServerTimer implements AbstractMetrics.Timer {
       "Total time taken to preload a table partition of an upsert table with upsert snapshot"),
   UPSERT_REMOVE_EXPIRED_PRIMARY_KEYS_TIME_MS("milliseconds", false,
       "Total time taken to delete expired upsert primary keys based on metadataTTL or deletedKeysTTL"),
+  EXPERIMENT_RAW_STRING_FWD_INDEX_LZ4_COMPRESSION_RATIO("ratio", false,
+      "raw string forward index + lz4 compression ratio"),
+  EXPERIMENT_RAW_STRING_FWD_INDEX_ZSTD_COMPRESSION_RATIO("ratio", false,
+      "raw string forward + zstd index compression ratio"),
+  EXPERIMENT_CLP_FWD_INDEX_V0_LZ4_COMPRESSION_RATIO("ratio", false, "CLPFwdIndexV0 + lz4 compression ratio"),
+  EXPERIMENT_CLP_FWD_INDEX_V0_ZSTD_COMPRESSION_RATIO("ratio", false, "CLPFwdIndexV0 + zstd compression ratio"),
+  EXPERIMENT_CLP_FWD_INDEX_V1_LZ4_COMPRESSION_RATIO("ratio", false, "CLPFwdIndexV1 + lz4 compression ratio"),
+  EXPERIMENT_CLP_FWD_INDEX_V2_LZ4_COMPRESSION_RATIO("ratio", false, "CLPFwdIndexV2 + lz4 compression ratio"),
+  EXPERIMENT_CLP_FWD_INDEX_V2_ZSTD_COMPRESSION_RATIO("ratio", false, "CLPFwdIndexV2 + zstd compression ratio"),
+
   GRPC_QUERY_EXECUTION_MS("milliseconds", false, "Total execution time of a successful query over gRPC"),
   UPSERT_SNAPSHOT_TIME_MS("milliseconds", false, "Total time taken to take upsert table snapshot"),
 

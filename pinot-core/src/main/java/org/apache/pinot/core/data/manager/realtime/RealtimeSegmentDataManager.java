@@ -62,6 +62,7 @@ import org.apache.pinot.segment.local.segment.creator.TransformPipeline;
 import org.apache.pinot.segment.local.segment.index.loader.IndexLoadingConfig;
 import org.apache.pinot.segment.local.upsert.PartitionUpsertMetadataManager;
 import org.apache.pinot.segment.local.utils.IngestionUtils;
+import org.apache.pinot.segment.local.utils.stats.compression.FwdIndexCompressionStats;
 import org.apache.pinot.segment.spi.MutableSegment;
 import org.apache.pinot.segment.spi.V1Constants;
 import org.apache.pinot.segment.spi.creator.SegmentVersion;
@@ -1043,6 +1044,9 @@ public class RealtimeSegmentDataManager extends SegmentDataManager {
       _segmentLogger.info("Successfully built segment (Column Mode: {}) in {} ms, after lockWaitTime {} ms",
           converter.isColumnMajorEnabled(), buildTimeMillis, waitTimeMillis);
 
+      // Emit forward index compression metrics to logs and m3
+      FwdIndexCompressionStats.emit(_segmentNameStr);
+
       File dataDir = new File(_resourceDataDir);
       File indexDir = new File(dataDir, _segmentNameStr);
       FileUtils.deleteQuietly(indexDir);
@@ -1580,6 +1584,8 @@ public class RealtimeSegmentDataManager extends SegmentDataManager {
         try {
           StreamMessageDecoder streamMessageDecoder = createMessageDecoder(fieldsToRead);
           localStreamDataDecoder.set(new StreamDataDecoderImpl(streamMessageDecoder));
+          // Register a new realtime segment in forward index compression statistics class
+          FwdIndexCompressionStats.register(_tableNameWithType, _segmentNameStr, streamMessageDecoder);
           return true;
         } catch (Exception e) {
           _segmentLogger.warn("Failed to initialize the StreamMessageDecoder: ", e);

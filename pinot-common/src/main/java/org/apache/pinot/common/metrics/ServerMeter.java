@@ -126,6 +126,14 @@ public enum ServerMeter implements AbstractMetrics.Meter {
   TOTAL_THREAD_CPU_TIME_MILLIS("millis", false),
   LARGE_QUERY_RESPONSE_SIZE_EXCEPTIONS("exceptions", false),
 
+  EXPERIMENT_STRING_RAW_FWD_INDEX_LZ4_COMPRESSED_SIZE("bytes", false, "StringRawFwdIndex + lz4 compressed size"),
+  EXPERIMENT_STRING_RAW_FWD_INDEX_ZSTD_COMPRESSED_SIZE("bytes", false, "StringRawFwdIndex + zstd compressed size"),
+  EXPERIMENT_CLP_FWD_INDEX_V0_LZ4_COMPRESSED_SIZE("bytes", false, "CLPFwdIndexV0 + lz4 compressed size"),
+  EXPERIMENT_CLP_FWD_INDEX_V0_ZSTD_COMPRESSED_SIZE("bytes", false, "CLPFwdIndexV0 + zstd compressed size"),
+  EXPERIMENT_CLP_FWD_INDEX_V2_LZ4_COMPRESSED_SIZE("bytes", false, "CLPFwdIndexV2 + lz4 compressed size"),
+  EXPERIMENT_CLP_FWD_INDEX_V2_ZSTD_COMPRESSED_SIZE("bytes", false, "CLPFwdIndexV2 + zstd compressed size"),
+  EXPERIMENT_RAW_STRING_FWD_INDEX_UNCOMPRESSED_SIZE("bytes", false, "StringRawFwdIndex uncompressed size"),
+
   // Multi-stage
   /**
    * Number of times the max number of rows in the hash table has been reached.

@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import org.apache.pinot.segment.local.utils.stats.compression.FwdIndexCompressionStats;
 import org.apache.pinot.spi.data.readers.GenericRow;
 import org.apache.pinot.spi.data.readers.RecordExtractor;
 import org.apache.pinot.spi.data.readers.RecordExtractorConfig;
@@ -66,6 +67,10 @@ public class CLPLogMessageDecoder implements StreamMessageDecoder<byte[]> {
     try {
       JsonNode message = JsonUtils.bytesToJsonNode(payload);
       Map<String, Object> from = JsonUtils.jsonNodeToMap(message);
+
+      // Append to forward index compression stats collectors
+      FwdIndexCompressionStats.collect(this, from, payload);
+
       _recordExtractor.extract(from, destination);
       return destination;
     } catch (Exception e) {
