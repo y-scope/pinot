@@ -21,7 +21,6 @@ package org.apache.pinot.segment.local.utils.stats.compression;
 import java.util.List;
 import org.apache.pinot.common.metrics.ServerMetrics;
 import org.apache.pinot.segment.local.utils.stats.compression.fwd.CLPFwdIndexV0Stats;
-import org.apache.pinot.segment.local.utils.stats.compression.fwd.CLPFwdIndexV1Stats;
 import org.apache.pinot.segment.local.utils.stats.compression.fwd.CLPFwdIndexV2Stats;
 import org.apache.pinot.segment.local.utils.stats.compression.fwd.RawStringFwdIndexStats;
 import org.apache.pinot.segment.spi.compression.ChunkCompressionType;
@@ -65,7 +64,8 @@ public class CLPCompressionDataColumnTest {
 //      if (chunkCompressionType == ChunkCompressionType.LZ4) {
 //        compressionStats = new CLPFwdIndexV1Stats(dataColumn, chunkCompressionType).collectStats();
 //        System.out.println(
-//            "CLPFwdIndexV1tats + " + compressorName + " compression ratio: " + compressionStats.getCompressionRatio());
+//            "CLPFwdIndexV1tats + " + compressorName + " compression ratio: "
+//                    + compressionStats.getCompressionRatio());
 //      }
 
       compressionStats = new CLPFwdIndexV2Stats(dataColumn, chunkCompressionType).collectStats();
