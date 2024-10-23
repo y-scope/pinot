@@ -14,8 +14,10 @@ import org.apache.pinot.segment.local.io.writer.impl.VarByteChunkForwardIndexWri
 import org.apache.pinot.segment.local.realtime.impl.dictionary.BytesOffHeapMutableDictionary;
 import org.apache.pinot.segment.local.realtime.impl.forward.CLPMutableForwardIndexV2;
 import org.apache.pinot.segment.local.realtime.impl.forward.FixedByteSVMutableForwardIndex;
+import org.apache.pinot.segment.local.segment.creator.impl.stats.CLPStatsProvider;
 import org.apache.pinot.segment.spi.V1Constants;
 import org.apache.pinot.segment.spi.compression.ChunkCompressionType;
+import org.apache.pinot.segment.spi.creator.ColumnStatistics;
 import org.apache.pinot.segment.spi.index.creator.ForwardIndexCreator;
 import org.apache.pinot.spi.data.FieldSpec;
 import org.slf4j.Logger;
@@ -53,6 +55,13 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   private MultiValueFixedByteRawIndexCreator _encodedVarFwdIndex;
   private File _rawMsgFwdIndexFile;
   private SingleValueVarByteRawIndexCreator _rawMsgFwdIndex;
+
+
+  public CLPForwardIndexCreatorV2(File baseIndexDir, ColumnStatistics columnStatistics)
+      throws IOException {
+    this(baseIndexDir, ((CLPStatsProvider) columnStatistics).getCLPV2Stats().getClpMutableForwardIndexV2(),
+        ChunkCompressionType.ZSTANDARD);
+  }
 
   // Batch columnar ingestion directly from CLPMutableForwardIndexV2
   public CLPForwardIndexCreatorV2(File baseIndexDir, CLPMutableForwardIndexV2 clpMutableForwardIndex,
@@ -214,7 +223,8 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
 
   @Override
   public void putString(String value) {
-    throw new UnsupportedOperationException("Use putEncodedString instead");
+    // No-op. All rows from CLPForwardIndexV2 has already been ingested in the constructor.
+    return;
   }
 
   @Override
