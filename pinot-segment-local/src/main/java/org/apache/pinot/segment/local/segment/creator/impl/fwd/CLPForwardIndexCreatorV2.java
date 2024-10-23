@@ -23,11 +23,50 @@ import org.apache.pinot.spi.data.FieldSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 /**
- * This immutable forward index creator is used to create the final immutable version of
- * {@code CLPMutableForwardIndexV2}.
- * TODO: write better javadoc
+ * The {@code CLPForwardIndexCreatorV2} is responsible for creating the final immutable forward index
+ * from the {@link CLPMutableForwardIndexV2}. This forward index can be either dictionary-encoded using CLP
+ * or raw-bytes-encoded, depending on the configuration and the characteristics of the data being processed.
+ *
+ * <p>Compared to the previous version, {@link CLPForwardIndexCreatorV1}, this V2 implementation introduces several
+ * key improvements:</p>
+ *
+ * <ol>
+ *   <li><strong>Improved Compression Ratio:</strong>
+ *   <p>Instead of using fixed-bit encoding (uncompressed), this version uses fixed-byte encoding with ZStandard
+ *   chunk compression for dictionary-encoded IDs. In real-world log data, particularly for dictionary-encoded
+ *   columns, the number of dictionary entries is often too large enough for fixed-bit encoding to achieve optimal
+ *   compression ratio. Using fixed-byte encoding with ZStandard compression significantly improves the compression
+ *   ratio.</p>
+ *   </li>
+ *
+ *   <li><strong>Upgrade to V5 Writer Version:</strong>
+ *   <p>This version uses the V5 writer for the forward index, which was introduced to improve the compression ratio
+ *   for multi-value fixed-width data types (e.g., longs, ints). The compression efficiency of
+ *   {@code CLPForwardIndexCreatorV2} heavily relies on the optimal storage of multi-valued columns for dictionary
+ *   variable ids and encoded variables.</p>
+ *   </li>
+ *
+ *   <li><strong>Reduced Serialization/Deserialization Overhead:</strong>
+ *   <p>The conversion from mutable to immutable forward indexes is significantly optimized. In
+ *   {@link CLPForwardIndexCreatorV1}, the conversion had to decode each row using CLP from the mutable forward index
+ *   and re-encode it, introducing non-trivial  serialization and deserialization (serdes) overhead. The new
+ *   {@link CLPMutableForwardIndexV2} eliminates this process entirely, avoiding the need for redundant decoding and
+ *   re-encoding. Additionally, primitive types (byte[]) are used for forward indexes to avoid boxing strings into
+ *   {@link String} objects, which improves both performance and memory efficiency (by reducing garbage collection
+ *   overhead on the heap).</p>
+ *   </li>
+ * </ol>
+ *
+ * <h3>Intermediate Files:</h3>
+ * <p>
+ * The class manages intermediate files during the forward index creation process. These files are cleaned up once
+ * the index is sealed and written to the final segment file.
+ * </p>
+ *
+ * @see CLPMutableForwardIndexV2
+ * @see VarByteChunkForwardIndexWriterV5
+ * @see ForwardIndexCreator
  */
 public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   public static final Logger LOGGER = LoggerFactory.getLogger(CLPForwardIndexCreatorV2.class);
@@ -56,21 +95,55 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   private File _rawMsgFwdIndexFile;
   private SingleValueVarByteRawIndexCreator _rawMsgFwdIndex;
 
-
+  /**
+   * Initializes a forward index creator for the given column using the provided base directory and column statistics.
+   * This constructor is specifically used by {@code ForwardIndexCreatorFactory}. Unlike other immutable forward index
+   * constructors, this one handles the entire process of converting a mutable forward index into an immutable one.
+   *
+   * <p>The {@code columnStatistics} object passed into this constructor should contain a reference to the mutable
+   * forward index ({@link CLPMutableForwardIndexV2}). The data from the mutable index is efficiently copied over
+   * into this forward index, which helps minimize serdes overhead. Because of this design, the usual
+   * {@code putString(String value)} method used during the normal conversion process, is effectively a no-op in
+   * this class.</p>
+   *
+   * @param baseIndexDir The base directory where the forward index files will be stored.
+   * @param columnStatistics The column statistics containing the CLP forward index information, including a reference
+   *        to the mutable forward index.
+   * @throws IOException If there is an error during initialization or while accessing the file system.
+   */
   public CLPForwardIndexCreatorV2(File baseIndexDir, ColumnStatistics columnStatistics)
       throws IOException {
     this(baseIndexDir, ((CLPStatsProvider) columnStatistics).getCLPV2Stats().getClpMutableForwardIndexV2(),
         ChunkCompressionType.ZSTANDARD);
   }
 
-  // Batch columnar ingestion directly from CLPMutableForwardIndexV2
+  /**
+   * Initializes a forward index creator for the given column using the provided mutable forward index and
+   * compression type. This constructor sets up the forward index for batch ingestion based on the provided CLP
+   * mutable forward index.
+   *
+   * @param baseIndexDir The base directory where the forward index files will be stored.
+   * @param clpMutableForwardIndex The mutable forward index containing the raw data to be ingested.
+   * @param chunkCompressionType The compression type to be used for encoding the forward index.
+   * @throws IOException If there is an error during initialization or while accessing the file system.
+   */
   public CLPForwardIndexCreatorV2(File baseIndexDir, CLPMutableForwardIndexV2 clpMutableForwardIndex,
       ChunkCompressionType chunkCompressionType)
       throws IOException {
     this(baseIndexDir, clpMutableForwardIndex, chunkCompressionType, false);
   }
 
-  // Batch columnar ingestion directly from CLPMutableForwardIndexV2 with forcedRawEncoding option
+  /**
+   * Initializes a forward index creator for the given column using the provided mutable forward index, compression
+   * type, and an option to force raw encoding. If `forceRawEncoding` is true, the forward index will store raw bytes
+   * instead of using CLP encoding.
+   *
+   * @param baseIndexDir The base directory where the forward index files will be stored.
+   * @param clpMutableForwardIndex The mutable forward index containing the raw data to be ingested.
+   * @param chunkCompressionType The compression type used for encoding the forward index.
+   * @param forceRawEncoding If true, raw bytes encoding will be used, bypassing CLP encoding.
+   * @throws IOException If there is an error during initialization or while accessing the file system.
+   */
   public CLPForwardIndexCreatorV2(File baseIndexDir, CLPMutableForwardIndexV2 clpMutableForwardIndex,
       ChunkCompressionType chunkCompressionType, boolean forceRawEncoding)
       throws IOException {
@@ -110,10 +183,23 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     _fileBuffer = _dataFile.map(FileChannel.MapMode.READ_WRITE, 0, Integer.MAX_VALUE);
   }
 
+  /**
+   * Returns whether the current forward index is CLP-encoded.
+   *
+   * @return True if the forward index is CLP-encoded, false otherwise.
+   */
   public boolean isClpEncoded() {
     return _isClpEncoded;
   }
 
+  /**
+   * Initializes the necessary components for raw encoding mode, including setting up the forward index file for raw
+   * message bytes. This method is called when CLP encoding is not used.
+   *
+   * @param chunkCompressionType The compression type used for encoding the forward index.
+   * @param maxLength The maximum length of the raw byte messages.
+   * @throws IOException If there is an error during initialization or while accessing the file system.
+   */
   private void initializeRawEncodingMode(ChunkCompressionType chunkCompressionType, int maxLength)
       throws IOException {
     _rawMsgFwdIndexFile = new File(_intermediateFilesDir, _column + ".rawMsg");
@@ -121,6 +207,17 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
         FieldSpec.DataType.BYTES, maxLength, true, VarByteChunkForwardIndexWriterV5.VERSION);
   }
 
+  /**
+   * Initializes the necessary components for dictionary encoding mode, including setting up the forward index files for
+   * logtype IDs, dictionary variable IDs, and encoded variables. This method is called when CLP encoding is used.
+   *
+   * @param chunkCompressionType The compression type used for encoding the forward index.
+   * @param logtypeDictSize The size of the logtype dictionary.
+   * @param dictVarDictSize The size of the variable-length dictionary.
+   * @param maxNumDictVarIdPerDoc The maximum number of dictionary variable IDs per document.
+   * @param maxNumEncodedVarPerDoc The maximum number of encoded variables per document.
+   * @throws IOException If there is an error during initialization or while accessing the file system.
+   */
   private void initializeDictionaryEncodingMode(ChunkCompressionType chunkCompressionType, int logtypeDictSize,
       int dictVarDictSize, int maxNumDictVarIdPerDoc, int maxNumEncodedVarPerDoc)
       throws IOException {
@@ -143,24 +240,23 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
         FieldSpec.DataType.LONG, maxNumEncodedVarPerDoc, true, VarByteChunkForwardIndexWriterV5.VERSION);
   }
 
-  // Columnar based ingestion
   public void putLogtypeDict(BytesOffHeapMutableDictionary logtypeDict)
       throws IOException {
     for (int i = 0; i < logtypeDict.length(); i++) {
-      addLogtypeDictEntry(logtypeDict.get(i));
+      _logtypeDict.add(logtypeDict.get(i));
     }
   }
 
   public void putDictVarDict(BytesOffHeapMutableDictionary dictVarDict)
       throws IOException {
     for (int i = 0; i < dictVarDict.length(); i++) {
-      addDictVarDictEntry(dictVarDict.get(i));
+      _dictVarDict.add(dictVarDict.get(i));
     }
   }
 
   public void putLogtypeId(FixedByteSVMutableForwardIndex logtypeIdMutableFwdIndex, int numLogtype) {
     for (int i = 0; i < numLogtype; i++) {
-      putLogtypeId(logtypeIdMutableFwdIndex.getInt(i));
+      _logtypeIdFwdIndex.putInt(logtypeIdMutableFwdIndex.getInt(i));
     }
   }
 
@@ -174,7 +270,7 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
       for (int i = 0; i < numDictVars; i++) {
         dictVarIds[i] = dictVarIdMutableFwdIndex.getInt(dictVarBeginOffset + i);
       }
-      putDictVarIds(dictVarIds);
+      _dictVarIdFwdIndex.putIntMV(dictVarIds);
       dictVarBeginOffset = dictVarEndOffset;
     }
   }
@@ -189,32 +285,9 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
       for (int i = 0; i < numEncodedVars; i++) {
         encodedVars[i] = encodedVarForwardIndex.getLong(encodedVarBeginOffset + i);
       }
-      putEncodedVars(encodedVars);
+      _encodedVarFwdIndex.putLongMV(encodedVars);
       encodedVarBeginOffset = encodedVarEndOffset;
     }
-  }
-
-  // Row-based ingestion
-  public void addLogtypeDictEntry(byte[] logtypeEntry)
-      throws IOException {
-    _logtypeDict.add(logtypeEntry);
-  }
-
-  public void addDictVarDictEntry(byte[] dictVarDict)
-      throws IOException {
-    _dictVarDict.add(dictVarDict);
-  }
-
-  public void putLogtypeId(int logtypeId) {
-    _logtypeIdFwdIndex.putInt(logtypeId);
-  }
-
-  public void putDictVarIds(int[] dictVarIds) {
-    _dictVarIdFwdIndex.putIntMV(dictVarIds);
-  }
-
-  public void putEncodedVars(long[] encodedVars) {
-    _encodedVarFwdIndex.putLongMV(encodedVars);
   }
 
   public void putRawMsgBytes(byte[] rawMsgBytes) {
@@ -227,6 +300,10 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     return;
   }
 
+  /**
+   * Seals the forward index by finalizing and writing all the data to the underlying file storage. This method
+   * closes all intermediate files and writes the final forward index to the memory-mapped buffer.
+   */
   @Override
   public void seal() {
     try {
@@ -321,6 +398,19 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     }
   }
 
+  /**
+   * Closes the forward index creator, deleting all intermediate files and releasing any resources held by the class.
+   *
+   * @throws IOException If there is an error while closing the forward index or deleting the intermediate files.
+   */
+  @Override
+  public void close()
+      throws IOException {
+    // Delete all temp files
+    FileUtils.deleteDirectory(_intermediateFilesDir);
+    _dataFile.close();
+  }
+
   @Override
   public boolean isDictionaryEncoded() {
     return false;
@@ -336,15 +426,14 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     return FieldSpec.DataType.STRING;
   }
 
-  @Override
-  public void close()
+  /**
+   * Copies the contents of the given file into the memory-mapped buffer.
+   *
+   * @param file The file to be copied into the memory-mapped buffer.
+   * @throws IOException If there is an error while reading the file or writing to the buffer.
+   */
+  private void copyFileIntoBuffer(File file)
       throws IOException {
-    // Delete all temp files
-    FileUtils.deleteDirectory(_intermediateFilesDir);
-    _dataFile.close();
-  }
-
-  private void copyFileIntoBuffer(File file) throws IOException {
     try (FileChannel from = (FileChannel.open(file.toPath(), StandardOpenOption.READ))) {
       _fileBuffer.put(from.map(FileChannel.MapMode.READ_ONLY, 0, file.length()));
     }

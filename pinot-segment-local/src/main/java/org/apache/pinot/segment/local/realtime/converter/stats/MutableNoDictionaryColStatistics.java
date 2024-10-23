@@ -128,7 +128,7 @@ public class MutableNoDictionaryColStatistics implements ColumnStatistics, CLPSt
 
   @Override
   public CLPV2Stats getCLPV2Stats() {
-    if (_forwardIndex instanceof  CLPMutableForwardIndexV2) {
+    if (_forwardIndex instanceof CLPMutableForwardIndexV2) {
       return ((CLPMutableForwardIndexV2) _forwardIndex).getCLPV2Stats();
     }
     throw new IllegalStateException(

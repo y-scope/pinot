@@ -16,8 +16,21 @@ import org.apache.pinot.spi.data.FieldSpec;
 
 
 /**
- * Read immutable forward index created {@code CLPForwardIndexCreatorV2}
- * TODO: write better javadoc
+ * {@code CLPForwardIndexReaderV2} is a forward index reader for compressed log processing (CLP) encoded forward
+ * indexes. It supports reading both CLP-encoded and raw message forward indexes created by
+ * {@link CLPForwardIndexCreatorV2}.
+ *
+ * <p>This class supports two modes of reading:
+ * <ul>
+ *   <li>**CLP-encoded forward index**: Reads compressed log messages that are stored using a combination of logtype
+ *   dictionaries, dictionary variables, and encoded variables.</li>
+ *   <li>**Raw message forward index**: Reads raw log messages stored as byte arrays without any CLP encoding.</li>
+ * </ul>
+ *
+ * The constructor of this class reads and validates the forward index from a {@link PinotDataBuffer}, and based on the
+ * metadata, it initializes the appropriate readers for either CLP-encoded or raw messages.
+ *
+ * @see CLPForwardIndexCreatorV2
  */
 public class CLPForwardIndexReaderV2 implements ForwardIndexReader<CLPForwardIndexReaderV2.CLPReaderContext> {
   private final int _version;
@@ -35,6 +48,16 @@ public class CLPForwardIndexReaderV2 implements ForwardIndexReader<CLPForwardInd
   private VarByteChunkForwardIndexReaderV5 _rawMsgFwdIndexReader;
   private MessageDecoder _clpMessageDecoder;
 
+  /**
+   * Constructs a {@code CLPForwardIndexReaderV2} for reading the forward index from the given {@link PinotDataBuffer}.
+   *
+   * <p>This constructor reads the metadata from the data buffer and initializes the appropriate readers for either
+   * CLP-encoded or raw message forward indexes.</p>
+   *
+   * @param pinotDataBuffer The data buffer containing the forward index.
+   * @param numDocs The number of documents in the forward index.
+   * @throws UnsupportedOperationException If the magic bytes do not match the expected CLP forward index format.
+   */
   public CLPForwardIndexReaderV2(PinotDataBuffer pinotDataBuffer, int numDocs) {
     _numDocs = numDocs;
     int offset = 0;
@@ -109,6 +132,11 @@ public class CLPForwardIndexReaderV2 implements ForwardIndexReader<CLPForwardInd
     }
   }
 
+  /**
+   * Creates a new {@code CLPReaderContext} for reading data from the forward index.
+   *
+   * @return A new {@code CLPReaderContext} initialized with the appropriate reader contexts for the forward index.
+   */
   public CLPForwardIndexReaderV2.CLPReaderContext createContext() {
     if (_isClpEncoded) {
       return new CLPReaderContext(_logTypeIdFwdIndexReader.createContext(), _dictVarIdFwdIndexReader.createContext(),
@@ -164,6 +192,11 @@ public class CLPForwardIndexReaderV2 implements ForwardIndexReader<CLPForwardInd
       throws IOException {
   }
 
+  /**
+   * The {@code CLPReaderContext} is a context class used to hold reader-specific state during forward index reading.
+   * It contains references to reader contexts for logtype IDs, dictionary variable IDs, encoded variables, or raw
+   * messages.
+   */
   public static final class CLPReaderContext implements ForwardIndexReaderContext {
     private final ChunkReaderContext _logTypeIdReaderContext;
     private final VarByteChunkForwardIndexReaderV5.ReaderContext _dictVarIdReaderContext;
