@@ -33,10 +33,10 @@ import org.slf4j.LoggerFactory;
  *
  * <ol>
  *   <li><strong>Improved Compression Ratio:</strong>
- *   <p>Instead of using fixed-bit encoding (uncompressed), this version uses fixed-byte encoding with ZStandard
+ *   <p>Instead of using fixed-bit encoding (uncompressed), this version uses fixed-byte encoding with Zstandard
  *   chunk compression for dictionary-encoded IDs. In real-world log data, particularly for dictionary-encoded
  *   columns, the number of dictionary entries is often too large enough for fixed-bit encoding to achieve optimal
- *   compression ratio. Using fixed-byte encoding with ZStandard compression significantly improves the compression
+ *   compression ratio. Using fixed-byte encoding with Zstandard compression significantly improves compression
  *   ratio.</p>
  *   </li>
  *
@@ -44,13 +44,13 @@ import org.slf4j.LoggerFactory;
  *   <p>This version uses the V5 writer for the forward index, which was introduced to improve the compression ratio
  *   for multi-value fixed-width data types (e.g., longs, ints). The compression efficiency of
  *   {@code CLPForwardIndexCreatorV2} heavily relies on the optimal storage of multi-valued columns for dictionary
- *   variable ids and encoded variables.</p>
+ *   variable IDs and encoded variables.</p>
  *   </li>
  *
  *   <li><strong>Reduced Serialization/Deserialization Overhead:</strong>
  *   <p>The conversion from mutable to immutable forward indexes is significantly optimized. In
  *   {@link CLPForwardIndexCreatorV1}, the conversion had to decode each row using CLP from the mutable forward index
- *   and re-encode it, introducing non-trivial  serialization and deserialization (serdes) overhead. The new
+ *   and re-encode it, introducing non-trivial serialization and deserialization (serdes) overhead. The new
  *   {@link CLPMutableForwardIndexV2} eliminates this process entirely, avoiding the need for redundant decoding and
  *   re-encoding. Additionally, primitive types (byte[]) are used for forward indexes to avoid boxing strings into
  *   {@link String} objects, which improves both performance and memory efficiency (by reducing garbage collection

@@ -16,9 +16,8 @@ import org.apache.pinot.spi.data.FieldSpec;
 
 
 /**
- * {@code CLPForwardIndexReaderV2} is a forward index reader for compressed log processing (CLP) encoded forward
- * indexes. It supports reading both CLP-encoded and raw message forward indexes created by
- * {@link CLPForwardIndexCreatorV2}.
+ * {@code CLPForwardIndexReaderV2} is a forward index reader for CLP-encoded forward indexes. It supports reading both
+ * CLP-encoded and raw message forward indexes created by {@link CLPForwardIndexCreatorV2}.
  *
  * <p>This class supports two modes of reading:
  * <ul>
