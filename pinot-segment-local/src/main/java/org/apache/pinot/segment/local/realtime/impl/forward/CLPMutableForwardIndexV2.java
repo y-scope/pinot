@@ -230,7 +230,7 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
    */
   public void appendEncodedMessage(@NotNull EncodedMessage clpEncodedMessage)
       throws IOException {
-    if (_isClpEncoded) {
+    if (_isClpEncoded || _forceEnableClpEncoding) {
       _logtypeId.setInt(_nextDocId, _logtypeDict.index(clpEncodedMessage.getLogtype()));
 
       FlattenedByteArray flattenedDictVars = clpEncodedMessage.getDictionaryVarsAsFlattenedByteArray();
@@ -257,7 +257,7 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
       _encodedVarOffset.setInt(_nextDocId, _nextEncodedVarId);
 
       // Turn off clp encoding when dictionary size is exceeded
-      if (_nextDocId > _minNumDocsBeforeCardinalityMonitoring) {
+      if (_nextDocId > _minNumDocsBeforeCardinalityMonitoring && !_forceEnableClpEncoding) {
         int inverseLogtypeCardinalityRatio = _nextDocId / _logtypeDict.length();
         if (inverseLogtypeCardinalityRatio < _inverseLogtypeCardinalityRatioStopThreshold) {
           _isClpEncoded = false;
