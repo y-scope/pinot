@@ -139,9 +139,9 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
    * {@code putString(String value)} method used during the normal conversion process, is effectively a no-op in this
    * class.</p>
    *
-   * @param baseIndexDir The base directory where the forward index files will be stored.
+   * @param baseIndexDir     The base directory where the forward index files will be stored.
    * @param columnStatistics The column statistics containing the CLP forward index information, including a reference
-   *        to the mutable forward index.
+   *                         to the mutable forward index.
    * @throws IOException If there is an error during initialization or while accessing the file system.
    */
   public CLPForwardIndexCreatorV2(File baseIndexDir, ColumnStatistics columnStatistics)
