@@ -32,6 +32,7 @@ import javax.validation.constraints.NotNull;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.pinot.segment.local.io.util.VarLengthValueWriter;
+import org.apache.pinot.segment.local.io.writer.impl.FixedByteChunkForwardIndexWriter;
 import org.apache.pinot.segment.local.io.writer.impl.VarByteChunkForwardIndexWriterV5;
 import org.apache.pinot.segment.local.realtime.impl.dictionary.BytesOffHeapMutableDictionary;
 import org.apache.pinot.segment.local.realtime.impl.forward.CLPMutableForwardIndexV2;
@@ -110,13 +111,14 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   private File _dictVarDictFile;
   private VarLengthValueWriter _dictVarDict;
   private File _logtypeIdFwdIndexFile;
-  private SingleValueFixedByteRawIndexCreator _logtypeIdFwdIndex;
+  private FixedByteChunkForwardIndexWriter _logtypeIdFwdIndex;
   private File _dictVarIdFwdIndexFile;
-  private MultiValueFixedByteRawIndexCreator _dictVarIdFwdIndex;
+  private VarByteChunkForwardIndexWriterV5 _dictVarIdFwdIndex;
   private File _encodedVarFwdIndexFile;
-  private MultiValueFixedByteRawIndexCreator _encodedVarFwdIndex;
+  private VarByteChunkForwardIndexWriterV5 _encodedVarFwdIndex;
   private File _rawMsgFwdIndexFile;
-  private SingleValueVarByteRawIndexCreator _rawMsgFwdIndex;
+  private VarByteChunkForwardIndexWriterV5 _rawMsgFwdIndex;
+  private int _targetChunkSize = 1 << 20;   // 1MB in bytes
 
   private final EncodedMessage _clpEncodedMessage;
   private final MessageEncoder _clpMessageEncoder;
@@ -225,8 +227,7 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   private void initializeRawEncodingMode(ChunkCompressionType chunkCompressionType, int maxLength)
       throws IOException {
     _rawMsgFwdIndexFile = new File(_intermediateFilesDir, _column + ".rawMsg");
-    _rawMsgFwdIndex = new SingleValueVarByteRawIndexCreator(_rawMsgFwdIndexFile, chunkCompressionType, _numDoc,
-        FieldSpec.DataType.BYTES, maxLength, true, VarByteChunkForwardIndexWriterV5.VERSION);
+    _rawMsgFwdIndex = new VarByteChunkForwardIndexWriterV5(_rawMsgFwdIndexFile, chunkCompressionType, _targetChunkSize);
   }
 
   /**
@@ -247,19 +248,20 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     _logtypeDict = new VarLengthValueWriter(_logtypeDictFile, logtypeDictSize);
     _logtypeDictSize = logtypeDictSize;
     _logtypeIdFwdIndexFile = new File(_intermediateFilesDir, _column + ".lt.id");
-    _logtypeIdFwdIndex = new SingleValueFixedByteRawIndexCreator(_logtypeIdFwdIndexFile, chunkCompressionType, _numDoc,
-        FieldSpec.DataType.INT, VarByteChunkForwardIndexWriterV5.VERSION);
+    _logtypeIdFwdIndex = new FixedByteChunkForwardIndexWriter(_logtypeIdFwdIndexFile, chunkCompressionType, _numDoc,
+        _targetChunkSize / FieldSpec.DataType.INT.size(), FieldSpec.DataType.INT.size(),
+        VarByteChunkForwardIndexWriterV5.VERSION);
 
     _dictVarDictFile = new File(_intermediateFilesDir, _column + ".var.dict");
     _dictVarDict = new VarLengthValueWriter(_dictVarDictFile, dictVarDictSize);
     _dictVarDictSize = dictVarDictSize;
     _dictVarIdFwdIndexFile = new File(_dictVarIdFwdIndexFile, _column + ".dictVars");
-    _dictVarIdFwdIndex = new MultiValueFixedByteRawIndexCreator(_dictVarIdFwdIndexFile, chunkCompressionType, _numDoc,
-        FieldSpec.DataType.INT, maxNumDictVarIdPerDoc, true, VarByteChunkForwardIndexWriterV5.VERSION);
+    _dictVarIdFwdIndex =
+        new VarByteChunkForwardIndexWriterV5(_dictVarIdFwdIndexFile, chunkCompressionType, _targetChunkSize);
 
     _encodedVarFwdIndexFile = new File(_intermediateFilesDir, _column + ".encodedVars");
-    _encodedVarFwdIndex = new MultiValueFixedByteRawIndexCreator(_encodedVarFwdIndexFile, chunkCompressionType, _numDoc,
-        FieldSpec.DataType.LONG, maxNumEncodedVarPerDoc, true, VarByteChunkForwardIndexWriterV5.VERSION);
+    _encodedVarFwdIndex =
+        new VarByteChunkForwardIndexWriterV5(_encodedVarFwdIndexFile, chunkCompressionType, _targetChunkSize);
   }
 
   public void putLogtypeDict(BytesOffHeapMutableDictionary logtypeDict)
@@ -374,14 +376,6 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   public void seal() {
     try {
       // Close intermediate files
-      if (isClpEncoded()) {
-        _logtypeIdFwdIndex.seal();
-        _dictVarIdFwdIndex.seal();
-        _encodedVarFwdIndex.seal();
-      } else {
-        _rawMsgFwdIndex.seal();
-      }
-
       if (isClpEncoded()) {
         try {
           _logtypeDict.close();

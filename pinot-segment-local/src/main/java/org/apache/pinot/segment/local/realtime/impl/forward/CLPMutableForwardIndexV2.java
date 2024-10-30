@@ -212,9 +212,19 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
     // docId is intentionally ignored because this forward index only supports sequential writes (append only)
     try {
       _clpMessageEncoder.encodeMessage(value, _clpEncodedMessage);
+    } catch (IOException e) {
+      try {
+        _clpMessageEncoder.encodeMessage("Failed to encode message", _clpEncodedMessage);
+      } catch (IOException ex) {
+        // Should not happen
+        throw new IllegalArgumentException("Failed to encode message" + value, e);
+      }
+    }
+
+    try {
       appendEncodedMessage(_clpEncodedMessage);
     } catch (IOException e) {
-      throw new IllegalArgumentException("Failed to encode message: " + value, e);
+      throw new IllegalArgumentException("Failed to append encoded message", e);
     }
   }
 
