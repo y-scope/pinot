@@ -121,6 +121,7 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   private int _targetChunkSize = 1 << 20;   // 1MB in bytes
 
   private final EncodedMessage _clpEncodedMessage;
+  private final EncodedMessage _failToEncodeClpEncodedMessage;
   private final MessageEncoder _clpMessageEncoder;
 
   private final BytesOffHeapMutableDictionary _mutableLogtypeDict;
@@ -205,6 +206,13 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     _clpEncodedMessage = new EncodedMessage();
     _clpMessageEncoder = new MessageEncoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
         BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
+    _failToEncodeClpEncodedMessage = new EncodedMessage();
+    try {
+      _clpMessageEncoder.encodeMessage("Failed to encode message", _failToEncodeClpEncodedMessage);
+    } catch (IOException ex) {
+      // Should not happen
+      throw new IllegalArgumentException("Failed to encode error message", ex);
+    }
   }
 
   /**
@@ -328,11 +336,14 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
    */
   @Override
   public void putString(String value) {
+    EncodedMessage encodedMessage = _clpEncodedMessage;
     try {
-      _clpMessageEncoder.encodeMessage(value, _clpEncodedMessage);
-      appendEncodedMessage(_clpEncodedMessage);
+      _clpMessageEncoder.encodeMessage(value, encodedMessage);
     } catch (IOException e) {
-      throw new IllegalArgumentException("Failed to encode message: " + value, e);
+      // Encode a fail-to-encode message if CLP encoding fails
+      encodedMessage = _failToEncodeClpEncodedMessage;
+    } finally {
+      appendEncodedMessage(encodedMessage);
     }
   }
 

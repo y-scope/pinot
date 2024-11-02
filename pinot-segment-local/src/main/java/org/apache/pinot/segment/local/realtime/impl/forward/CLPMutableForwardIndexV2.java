@@ -107,6 +107,7 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
   public final String _columnName;
 
   protected final EncodedMessage _clpEncodedMessage;
+  protected final EncodedMessage _failToEncodeClpEncodedMessage;
   protected final MessageEncoder _clpMessageEncoder;
   protected final MessageDecoder _clpMessageDecoder;
 
@@ -165,6 +166,14 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
     _clpMessageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
         BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
 
+    _failToEncodeClpEncodedMessage = new EncodedMessage();
+    try {
+      _clpMessageEncoder.encodeMessage("Failed to encode message", _failToEncodeClpEncodedMessage);
+    } catch (IOException ex) {
+      // Should not happen
+      throw new IllegalArgumentException("Failed to encode error message", ex);
+    }
+
     // Raw forward index stored as bytes
     _rawBytes = new VarByteSVMutableForwardIndex(FieldSpec.DataType.BYTES, memoryManager, columnName + "_rawBytes.fwd",
         _estimatedMaxDocCount, _rawMessageEstimatedAvgEncodedLength);
@@ -210,21 +219,14 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
   @Override
   public void setString(int docId, String value) {
     // docId is intentionally ignored because this forward index only supports sequential writes (append only)
+    EncodedMessage encodedMessage = _clpEncodedMessage;
     try {
-      _clpMessageEncoder.encodeMessage(value, _clpEncodedMessage);
+      _clpMessageEncoder.encodeMessage(value, encodedMessage);
     } catch (IOException e) {
-      try {
-        _clpMessageEncoder.encodeMessage("Failed to encode message", _clpEncodedMessage);
-      } catch (IOException ex) {
-        // Should not happen
-        throw new IllegalArgumentException("Failed to encode message" + value, e);
-      }
-    }
-
-    try {
-      appendEncodedMessage(_clpEncodedMessage);
-    } catch (IOException e) {
-      throw new IllegalArgumentException("Failed to append encoded message", e);
+      // Encode a fail-to-encode message if CLP encoding fails
+      encodedMessage = _failToEncodeClpEncodedMessage;
+    } finally {
+      appendEncodedMessage(encodedMessage);
     }
   }
 
@@ -236,10 +238,8 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
    * encoded message by replacing them with empty arrays, as Pinot does not accept null values.
    *
    * @param clpEncodedMessage The {@link EncodedMessage} to append.
-   * @throws IOException if an I/O error occurs during the appending process.
    */
-  public void appendEncodedMessage(@NotNull EncodedMessage clpEncodedMessage)
-      throws IOException {
+  public void appendEncodedMessage(@NotNull EncodedMessage clpEncodedMessage) {
     if (_isClpEncoded || _forceEnableClpEncoding) {
       _logtypeId.setInt(_nextDocId, _logtypeDict.index(clpEncodedMessage.getLogtype()));
 
