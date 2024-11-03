@@ -181,12 +181,11 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     _mutableDictVarDict = clpMutableForwardIndex.getDictVarDict();
     if (_isClpEncoded) {
       initializeDictionaryEncodingMode(chunkCompressionType, clpMutableForwardIndex.getLogtypeDict().length(),
-          clpMutableForwardIndex.getDictVarDict().length(), clpMutableForwardIndex.getMaxNumDictVarIdPerDoc(),
-          clpMutableForwardIndex.getMaxNumEncodedVarPerDoc());
+          clpMutableForwardIndex.getDictVarDict().length());
       putLogtypeDict(clpMutableForwardIndex.getLogtypeDict());
       putDictVarDict(clpMutableForwardIndex.getDictVarDict());
     } else {
-      initializeRawEncodingMode(chunkCompressionType, clpMutableForwardIndex.getLengthOfLongestElement());
+      initializeRawEncodingMode(chunkCompressionType);
     }
 
     _intermediateFilesDir =
@@ -229,10 +228,9 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
    * message bytes. This method is called when CLP encoding is not used.
    *
    * @param chunkCompressionType The compression type used for encoding the forward index.
-   * @param maxLength            The maximum length of the raw byte messages.
    * @throws IOException If there is an error during initialization or while accessing the file system.
    */
-  private void initializeRawEncodingMode(ChunkCompressionType chunkCompressionType, int maxLength)
+  private void initializeRawEncodingMode(ChunkCompressionType chunkCompressionType)
       throws IOException {
     _rawMsgFwdIndexFile = new File(_intermediateFilesDir, _column + ".rawMsg");
     _rawMsgFwdIndex = new VarByteChunkForwardIndexWriterV5(_rawMsgFwdIndexFile, chunkCompressionType, _targetChunkSize);
@@ -245,12 +243,10 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
    * @param chunkCompressionType   The compression type used for encoding the forward index.
    * @param logtypeDictSize        The size of the logtype dictionary.
    * @param dictVarDictSize        The size of the variable-length dictionary.
-   * @param maxNumDictVarIdPerDoc  The maximum number of dictionary variable IDs per document.
-   * @param maxNumEncodedVarPerDoc The maximum number of encoded variables per document.
    * @throws IOException If there is an error during initialization or while accessing the file system.
    */
   private void initializeDictionaryEncodingMode(ChunkCompressionType chunkCompressionType, int logtypeDictSize,
-      int dictVarDictSize, int maxNumDictVarIdPerDoc, int maxNumEncodedVarPerDoc)
+      int dictVarDictSize)
       throws IOException {
     _logtypeDictFile = new File(_intermediateFilesDir, _column + ".lt.dict");
     _logtypeDict = new VarLengthValueWriter(_logtypeDictFile, logtypeDictSize);
