@@ -273,7 +273,7 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
           _isClpEncoded = false;
           _bytesRawFwdIndexDocIdStartOffset = _nextDocId + 1;
         } else if (_dictVarDict.length() > 0) {
-          int inverseDictVarCardinalityRatio = _nextDictVarDocId / _dictVarDict.length();
+          int inverseDictVarCardinalityRatio = Math.max(_nextDocId, _nextDictVarDocId) / _dictVarDict.length();
           if (inverseDictVarCardinalityRatio < _inverseDictVarCardinalityRatioStopThreshold) {
             _isClpEncoded = false;
             _bytesRawFwdIndexDocIdStartOffset = _nextDocId + 1;
