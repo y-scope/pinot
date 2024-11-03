@@ -372,6 +372,8 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
       } else {
         _encodedVarFwdIndex.putLongMV(encodedVars);
       }
+    } else {
+      _rawMsgFwdIndex.putBytes(clpEncodedMessage.getMessage());
     }
   }
 
