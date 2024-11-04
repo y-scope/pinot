@@ -31,6 +31,7 @@ import java.util.Arrays;
 import javax.validation.constraints.NotNull;
 import org.apache.pinot.segment.local.realtime.impl.dictionary.BytesOffHeapMutableDictionary;
 import org.apache.pinot.segment.local.segment.creator.impl.stats.CLPStatsProvider;
+import org.apache.pinot.segment.local.segment.index.readers.forward.ClpEncodedRecord;
 import org.apache.pinot.segment.spi.index.mutable.MutableForwardIndex;
 import org.apache.pinot.segment.spi.memory.PinotDataBufferMemoryManager;
 import org.apache.pinot.spi.data.FieldSpec;
@@ -334,6 +335,28 @@ public class CLPMutableForwardIndexV2 implements MutableForwardIndex {
   @Override
   public String getString(int docId) {
     return new String(getRawBytes(docId), StandardCharsets.UTF_8);
+  }
+
+  @Override
+  public Object getEncodedRecord(int docId) {
+    // TODO Deduplicate with getRawBytes
+    byte[] logtype = _logtypeDict.get(_logtypeId.getInt(docId));
+
+    int dictVarIdBeginOffset = (0 == docId) ? 0 : _dictVarOffset.getInt(docId - 1);
+    int dictVarIdEndOffset = _dictVarOffset.getInt(docId);
+    byte[][] dictVars = new byte[dictVarIdEndOffset - dictVarIdBeginOffset][];
+    for (int i = 0; i < dictVars.length; i++) {
+      dictVars[i] = _dictVarDict.get(_dictVarId.getInt(dictVarIdBeginOffset + i));
+    }
+
+    int encodedVarIdBeginOffset = (0 == docId) ? 0 : _encodedVarOffset.getInt(docId - 1);
+    int encodedVarIdEndOffset = _encodedVarOffset.getInt(docId);
+    long[] encodedVars = new long[encodedVarIdEndOffset - encodedVarIdBeginOffset];
+    for (int i = 0; i < encodedVars.length; i++) {
+      encodedVars[i] = _encodedVar.getLong(encodedVarIdBeginOffset + i);
+    }
+
+    return new ClpEncodedRecord(logtype, dictVars, encodedVars);
   }
 
   public byte[] getRawBytes(int docId) {

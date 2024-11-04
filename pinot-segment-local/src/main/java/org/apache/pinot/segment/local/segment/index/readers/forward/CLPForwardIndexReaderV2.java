@@ -209,6 +209,23 @@ public class CLPForwardIndexReaderV2 implements ForwardIndexReader<CLPForwardInd
       throws IOException {
   }
 
+  @Override
+  public Object getEncodedRecord(int docId, CLPReaderContext context) {
+    byte[] logtype =
+        _logTypeDictReader.getBytes(_logTypeIdFwdIndexReader.getInt(docId, context._logTypeIdReaderContext),
+            _logtypeDictNumBytesPerValue);
+
+    int[] dictVarIds = _dictVarIdFwdIndexReader.getIntMV(docId, context._dictVarIdReaderContext);
+    byte[][] dictVars = new byte[dictVarIds.length][];
+    for (int i = 0; i < dictVars.length; i++) {
+      dictVars[i] = _dictVarDictReader.getBytes(dictVarIds[i], _dictVarDictNumBytesPerValue);
+    }
+
+    long[] encodedVars = _encodedVarFwdIndexReader.getLongMV(docId, context._encodedVarReaderContext);
+
+    return new ClpEncodedRecord(logtype, dictVars, encodedVars);
+  }
+
   /**
    * The {@code CLPReaderContext} is a context class used to hold reader-specific state during forward index reading.
    * It contains references to reader contexts for logtype IDs, dictionary variable IDs, encoded variables, or raw

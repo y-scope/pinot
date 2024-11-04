@@ -172,6 +172,10 @@ public interface MutableForwardIndex extends ForwardIndexReader<ForwardIndexRead
    */
   int getLengthOfLongestElement();
 
+  default Object getEncodedRecord(int docId) {
+    throw new UnsupportedOperationException();
+  }
+
   /**
    * DICTIONARY-ENCODED INDEX APIs
    */

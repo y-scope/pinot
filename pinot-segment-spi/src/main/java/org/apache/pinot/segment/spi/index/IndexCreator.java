@@ -60,6 +60,10 @@ public interface IndexCreator extends Closeable {
   void add(@Nonnull Object[] values, @Nullable int[] dictIds)
       throws IOException;
 
+  default void putEncodedRecord(Object record) {
+    throw new UnsupportedOperationException();
+  }
+
   void seal()
       throws IOException;
 }

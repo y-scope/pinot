@@ -89,6 +89,10 @@ public interface ForwardIndexReader<T extends ForwardIndexReaderContext> extends
     return null;
   }
 
+  default Object getEncodedRecord(int docId, T context) {
+    throw new UnsupportedOperationException();
+  }
+
   /**
    * DICTIONARY-ENCODED INDEX APIs
    */
