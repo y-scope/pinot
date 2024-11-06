@@ -159,6 +159,13 @@ public interface MutableForwardIndex extends ForwardIndexReader<ForwardIndexRead
   }
 
   /**
+   * Returns {@code true} if the forward index is a composite index, {@code false} if it is primitive
+   */
+  default boolean isCompositeIndex() {
+    return false;
+  }
+
+  /**
    * Returns the length (size in bytes) of the shortest elements inside the forward index.
    *
    * @return The length (size in bytes) of the shortest elements inside the forward index.
@@ -172,7 +179,7 @@ public interface MutableForwardIndex extends ForwardIndexReader<ForwardIndexRead
    */
   int getLengthOfLongestElement();
 
-  default Object getEncodedRecord(int docId) {
+  default Object getCompositeValue(int docId) {
     throw new UnsupportedOperationException();
   }
 

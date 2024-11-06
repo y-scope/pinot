@@ -185,9 +185,9 @@ public class PinotSegmentColumnReader implements Closeable {
     }
 
     if (_forwardIndexReader instanceof MutableForwardIndex) {
-      return ((MutableForwardIndex) _forwardIndexReader).getEncodedRecord(docId);
+      return ((MutableForwardIndex) _forwardIndexReader).getCompositeValue(docId);
     } else {
-      return _forwardIndexReader.getEncodedRecord(docId, _forwardIndexReaderContext);
+      return _forwardIndexReader.getCompositeValue(docId, _forwardIndexReaderContext);
     }
   }
 

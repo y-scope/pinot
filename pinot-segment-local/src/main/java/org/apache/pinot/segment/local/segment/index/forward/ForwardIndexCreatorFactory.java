@@ -22,7 +22,7 @@ package org.apache.pinot.segment.local.segment.index.forward;
 import java.io.File;
 import java.io.IOException;
 import org.apache.pinot.segment.local.segment.creator.impl.fwd.CLPForwardIndexCreatorV1;
-import org.apache.pinot.segment.local.segment.creator.impl.fwd.CLPForwardIndexCreatorV3;
+import org.apache.pinot.segment.local.segment.creator.impl.fwd.CLPForwardIndexCreatorV2;
 import org.apache.pinot.segment.local.segment.creator.impl.fwd.MultiValueEntryDictForwardIndexCreator;
 import org.apache.pinot.segment.local.segment.creator.impl.fwd.MultiValueFixedByteRawIndexCreator;
 import org.apache.pinot.segment.local.segment.creator.impl.fwd.MultiValueUnsortedForwardIndexCreator;
@@ -76,7 +76,7 @@ public class ForwardIndexCreatorFactory {
         return new CLPForwardIndexCreatorV1(indexDir, columnName, numTotalDocs, context.getColumnStatistics());
       }
       if (indexConfig.getCompressionCodec() == FieldConfig.CompressionCodec.CLPV2) {
-        return new CLPForwardIndexCreatorV3(indexDir, columnName, numTotalDocs, context.getColumnStatistics());
+        return new CLPForwardIndexCreatorV2(indexDir, context.getColumnStatistics());
       }
       ChunkCompressionType chunkCompressionType = indexConfig.getChunkCompressionType();
       if (chunkCompressionType == null) {

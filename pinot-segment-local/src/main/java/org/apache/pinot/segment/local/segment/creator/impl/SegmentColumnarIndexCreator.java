@@ -36,14 +36,10 @@ import org.apache.commons.configuration2.PropertiesConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.pinot.common.utils.FileUtils;
 import org.apache.pinot.segment.local.io.util.PinotDataBitSet;
-import org.apache.pinot.segment.local.realtime.impl.forward.CLPMutableForwardIndexV2;
-import org.apache.pinot.segment.local.segment.creator.impl.fwd.CLPForwardIndexCreatorV3;
 import org.apache.pinot.segment.local.segment.creator.impl.nullvalue.NullValueVectorCreator;
 import org.apache.pinot.segment.local.segment.index.dictionary.DictionaryIndexPlugin;
 import org.apache.pinot.segment.local.segment.index.dictionary.DictionaryIndexType;
 import org.apache.pinot.segment.local.segment.index.forward.ForwardIndexType;
-import org.apache.pinot.segment.local.segment.index.readers.forward.CLPForwardIndexReaderV1;
-import org.apache.pinot.segment.local.segment.index.readers.forward.CLPForwardIndexReaderV2;
 import org.apache.pinot.segment.local.segment.readers.PinotSegmentColumnReader;
 import org.apache.pinot.segment.spi.IndexSegment;
 import org.apache.pinot.segment.spi.V1Constants;
@@ -362,17 +358,14 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
 
     try (PinotSegmentColumnReader colReader = new PinotSegmentColumnReader(segment, columnName)) {
       Map<IndexType<?, ?, ?>, IndexCreator> creatorsByIndex = _creatorsByColAndIndex.get(columnName);
-      Map<IndexType<?, ?, ?>, IndexCreator> incompatibleCreatorsByIndex = new HashMap<>();
-      Map<IndexType<?, ?, ?>, IndexCreator> compatibleCreatorsByIndex = new HashMap<>();
+      Map<IndexType<?, ?, ?>, IndexCreator> primitiveCreatorsByIndex = new HashMap<>();
+      Map<IndexType<?, ?, ?>, IndexCreator> compositeCreatorsByIndex = new HashMap<>();
       ForwardIndexReader<?> forwardIndexReader = colReader.getForwardIndexReader();
       for (Map.Entry<IndexType<?, ?, ?>, IndexCreator> indexTypeAndCreator : creatorsByIndex.entrySet()) {
-        if ((forwardIndexReader instanceof CLPForwardIndexReaderV1
-            || forwardIndexReader instanceof CLPForwardIndexReaderV2
-            || forwardIndexReader instanceof CLPMutableForwardIndexV2)
-            && indexTypeAndCreator.getValue() instanceof CLPForwardIndexCreatorV3) {
-          compatibleCreatorsByIndex.put(indexTypeAndCreator.getKey(), indexTypeAndCreator.getValue());
+        if (forwardIndexReader.isCompositeIndex() && indexTypeAndCreator.getValue().isCompositeIndex()) {
+          compositeCreatorsByIndex.put(indexTypeAndCreator.getKey(), indexTypeAndCreator.getValue());
         } else {
-          incompatibleCreatorsByIndex.put(indexTypeAndCreator.getKey(), indexTypeAndCreator.getValue());
+          primitiveCreatorsByIndex.put(indexTypeAndCreator.getKey(), indexTypeAndCreator.getValue());
         }
       }
 
@@ -380,32 +373,32 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
       FieldSpec fieldSpec = _schema.getFieldSpecFor(columnName);
       SegmentDictionaryCreator dictionaryCreator = _dictionaryCreatorMap.get(columnName);
 
-      if (!incompatibleCreatorsByIndex.isEmpty()) {
+      if (!primitiveCreatorsByIndex.isEmpty()) {
         if (sortedDocIds != null) {
           int onDiskDocId = 0;
           for (int docId : sortedDocIds) {
-            indexColumnValue(colReader, incompatibleCreatorsByIndex, columnName, fieldSpec, dictionaryCreator, docId,
+            indexColumnValue(colReader, primitiveCreatorsByIndex, columnName, fieldSpec, dictionaryCreator, docId,
                 onDiskDocId, nullVec);
             onDiskDocId++;
           }
         } else {
           for (int docId = 0; docId < numDocs; docId++) {
-            indexColumnValue(colReader, incompatibleCreatorsByIndex, columnName, fieldSpec, dictionaryCreator, docId,
+            indexColumnValue(colReader, primitiveCreatorsByIndex, columnName, fieldSpec, dictionaryCreator, docId,
                 docId, nullVec);
           }
         }
       }
 
-      if (!compatibleCreatorsByIndex.isEmpty()) {
+      if (!compositeCreatorsByIndex.isEmpty()) {
         if (sortedDocIds != null) {
           int onDiskDocId = 0;
           for (int docId : sortedDocIds) {
-            indexColumnValueWithoutDecoding(colReader, compatibleCreatorsByIndex, docId, onDiskDocId, nullVec);
+            compositeIndexColumnValue(colReader, compositeCreatorsByIndex, docId, onDiskDocId, nullVec);
             onDiskDocId++;
           }
         } else {
           for (int docId = 0; docId < numDocs; docId++) {
-            indexColumnValueWithoutDecoding(colReader, compatibleCreatorsByIndex, docId, docId, nullVec);
+            compositeIndexColumnValue(colReader, compositeCreatorsByIndex, docId, docId, nullVec);
           }
         }
       }
@@ -435,11 +428,11 @@ public class SegmentColumnarIndexCreator implements SegmentCreator {
     }
   }
 
-  private void indexColumnValueWithoutDecoding(PinotSegmentColumnReader colReader,
+  private void compositeIndexColumnValue(PinotSegmentColumnReader colReader,
       Map<IndexType<?, ?, ?>, IndexCreator> creatorsByIndex, int sourceDocId, int onDiskDocPos,
       @Nullable NullValueVectorCreator nullVec) {
     for (Map.Entry<IndexType<?, ?, ?>, IndexCreator> indexAndCreator : creatorsByIndex.entrySet()) {
-      indexAndCreator.getValue().putEncodedRecord(colReader.getEncodedValue(sourceDocId));
+      indexAndCreator.getValue().putCompositeValue(colReader.getEncodedValue(sourceDocId));
     }
 
     if (nullVec != null) {

@@ -36,7 +36,6 @@ import org.apache.pinot.segment.local.io.writer.impl.FixedByteChunkForwardIndexW
 import org.apache.pinot.segment.local.io.writer.impl.VarByteChunkForwardIndexWriterV5;
 import org.apache.pinot.segment.local.realtime.impl.dictionary.BytesOffHeapMutableDictionary;
 import org.apache.pinot.segment.local.realtime.impl.forward.CLPMutableForwardIndexV2;
-import org.apache.pinot.segment.local.realtime.impl.forward.FixedByteSVMutableForwardIndex;
 import org.apache.pinot.segment.local.segment.creator.impl.stats.CLPStatsProvider;
 import org.apache.pinot.segment.spi.V1Constants;
 import org.apache.pinot.segment.spi.compression.ChunkCompressionType;
@@ -282,46 +281,6 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
     }
   }
 
-  public void putLogtypeId(FixedByteSVMutableForwardIndex logtypeIdMutableFwdIndex, int numLogtype) {
-    for (int i = 0; i < numLogtype; i++) {
-      _logtypeIdFwdIndex.putInt(logtypeIdMutableFwdIndex.getInt(i));
-    }
-  }
-
-  public void putDictVarIds(FixedByteSVMutableForwardIndex dictVarOffsetMutableFwdIndex,
-      FixedByteSVMutableForwardIndex dictVarIdMutableFwdIndex) {
-    int dictVarBeginOffset = 0;
-    for (int docId = 0; docId < _numDoc; docId++) {
-      int dictVarEndOffset = dictVarOffsetMutableFwdIndex.getInt(docId);
-      int numDictVars = dictVarEndOffset - dictVarBeginOffset;
-      int[] dictVarIds = numDictVars > 0 ? new int[numDictVars] : ArrayUtils.EMPTY_INT_ARRAY;
-      for (int i = 0; i < numDictVars; i++) {
-        dictVarIds[i] = dictVarIdMutableFwdIndex.getInt(dictVarBeginOffset + i);
-      }
-      _dictVarIdFwdIndex.putIntMV(dictVarIds);
-      dictVarBeginOffset = dictVarEndOffset;
-    }
-  }
-
-  public void putEncodedVars(FixedByteSVMutableForwardIndex encodedVarOffset,
-      FixedByteSVMutableForwardIndex encodedVarForwardIndex) {
-    int encodedVarBeginOffset = 0;
-    for (int docId = 0; docId < _numDoc; docId++) {
-      int encodedVarEndOffset = encodedVarOffset.getInt(docId);
-      int numEncodedVars = encodedVarEndOffset - encodedVarBeginOffset;
-      long[] encodedVars = numEncodedVars > 0 ? new long[numEncodedVars] : ArrayUtils.EMPTY_LONG_ARRAY;
-      for (int i = 0; i < numEncodedVars; i++) {
-        encodedVars[i] = encodedVarForwardIndex.getLong(encodedVarBeginOffset + i);
-      }
-      _encodedVarFwdIndex.putLongMV(encodedVars);
-      encodedVarBeginOffset = encodedVarEndOffset;
-    }
-  }
-
-  public void putRawMsgBytes(byte[] rawMsgBytes) {
-    _rawMsgFwdIndex.putBytes(rawMsgBytes);
-  }
-
   /**
    * Appends a string message to the forward indexes.
    * This path is only used for row-based ingestion and pays the high cost of encoding
@@ -351,29 +310,58 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   public void appendEncodedMessage(@NotNull EncodedMessage clpEncodedMessage) {
     if (_isClpEncoded) {
       // Logtype
-      _logtypeIdFwdIndex.putInt(_mutableLogtypeDict.index(clpEncodedMessage.getLogtype()));
+      int logtypeId = _mutableLogtypeDict.index(clpEncodedMessage.getLogtype());
 
       // DictVarIds
       byte[][] dictVars = clpEncodedMessage.getDictionaryVarsAsByteArrays();
+      int[] dictVarIds;
       if (null == dictVars || 0 == dictVars.length) {
-        _dictVarIdFwdIndex.putIntMV(ArrayUtils.EMPTY_INT_ARRAY);
+        dictVarIds = ArrayUtils.EMPTY_INT_ARRAY;
       } else {
-        int[] dictVarIds = new int[dictVars.length];
+        dictVarIds = new int[dictVars.length];
         for (int i = 0; i < dictVars.length; i++) {
           dictVarIds[i] = _mutableDictVarDict.index(dictVars[i]);
         }
-        _dictVarIdFwdIndex.putIntMV(dictVarIds);
       }
 
       // EncodedVars
       long[] encodedVars = clpEncodedMessage.getEncodedVars();
       if (null == encodedVars || 0 == encodedVars.length) {
-        _encodedVarFwdIndex.putLongMV(ArrayUtils.EMPTY_LONG_ARRAY);
-      } else {
-        _encodedVarFwdIndex.putLongMV(encodedVars);
+        encodedVars = ArrayUtils.EMPTY_LONG_ARRAY;
       }
+
+      putEncodedMessage(logtypeId, dictVarIds, encodedVars);
     } else {
       _rawMsgFwdIndex.putBytes(clpEncodedMessage.getMessage());
+    }
+  }
+
+  @Override
+  public void putCompositeValue(Object compositeValue) {
+    CLPMutableForwardIndexV2.CompositeValue value = (CLPMutableForwardIndexV2.CompositeValue) compositeValue;
+    if (value.isClpEncoded()) {
+      putEncodedMessage(value.getLogtypeId(), value.getDictVarIds(), value.getEncodedVars());
+    } else {
+      _rawMsgFwdIndex.putBytes(value.getRawMsg());
+    }
+  }
+
+  public void putEncodedMessage(int logtypeId, int[] dictVarIds, long[] encodedVars) {
+    // Logtype
+    _logtypeIdFwdIndex.putInt(logtypeId);
+
+    // DictVarIds
+    if (null == dictVarIds || 0 == dictVarIds.length) {
+      _dictVarIdFwdIndex.putIntMV(ArrayUtils.EMPTY_INT_ARRAY);
+    } else {
+      _dictVarIdFwdIndex.putIntMV(dictVarIds);
+    }
+
+    // EncodedVars
+    if (null == encodedVars || 0 == encodedVars.length) {
+      _encodedVarFwdIndex.putLongMV(ArrayUtils.EMPTY_LONG_ARRAY);
+    } else {
+      _encodedVarFwdIndex.putLongMV(encodedVars);
     }
   }
 
@@ -483,6 +471,11 @@ public class CLPForwardIndexCreatorV2 implements ForwardIndexCreator {
   @Override
   public boolean isDictionaryEncoded() {
     return false;
+  }
+
+  @Override
+  public boolean isCompositeIndex() {
+    return true;
   }
 
   @Override
