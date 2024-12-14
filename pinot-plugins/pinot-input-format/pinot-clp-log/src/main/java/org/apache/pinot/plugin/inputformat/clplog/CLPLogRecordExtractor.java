@@ -82,7 +82,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
   private MessageEncoder _clpMessageEncoder;
   private String _unencodableFieldErrorLogtype = null;
   private String[] _unencodableFieldErrorDictionaryVars = null;
-  private Long[] _unencodableFieldErrorEncodedVars = null;
+  private long[] _unencodableFieldErrorEncodedVars = null;
 
   private String _topicName;
   private ServerMetrics _serverMetrics;
@@ -125,7 +125,7 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
         _clpMessageEncoder.encodeMessage(unencodableFieldError, _clpEncodedMessage);
         _unencodableFieldErrorLogtype = _clpEncodedMessage.getLogTypeAsString();
         _unencodableFieldErrorDictionaryVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
-        _unencodableFieldErrorEncodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
+        _unencodableFieldErrorEncodedVars = _clpEncodedMessage.getEncodedVars();
       } catch (IOException e) {
         LOGGER.error("Can't encode 'unencodableFieldError' with CLP. error: {}", e.getMessage());
       }
@@ -195,8 +195,8 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
    */
   private void encodeFieldWithClp(String key, Object value, GenericRow to) {
     String logtype = null;
-    Object[] dictVars = null;
-    Object[] encodedVars = null;
+    String[] dictVars = null;
+    long[] encodedVars = null;
     if (null != value) {
       boolean fieldIsUnencodable = false;
 
@@ -222,8 +222,8 @@ public class CLPLogRecordExtractor extends BaseRecordExtractor<Map<String, Objec
         try {
           _clpMessageEncoder.encodeMessage(valueAsString, _clpEncodedMessage);
           logtype = _clpEncodedMessage.getLogTypeAsString();
-          encodedVars = _clpEncodedMessage.getEncodedVarsAsBoxedLongs();
           dictVars = _clpEncodedMessage.getDictionaryVarsAsStrings();
+          encodedVars = _clpEncodedMessage.getEncodedVars();
 
           if ((null != dictVars && dictVars.length > MAX_VARIABLES_PER_CELL) || (null != encodedVars
               && encodedVars.length > MAX_VARIABLES_PER_CELL)) {

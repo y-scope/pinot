@@ -203,13 +203,12 @@ public class CLPLogRecordExtractorTest {
       String[] dictionaryVars =
           (String[]) row.getValue(fieldName + ClpRewriter.DICTIONARY_VARS_COLUMN_SUFFIX);
       assertNotEquals(dictionaryVars, null);
-      Long[] encodedVars = (Long[]) row.getValue(fieldName + ClpRewriter.ENCODED_VARS_COLUMN_SUFFIX);
+      long[] encodedVars = (long[]) row.getValue(fieldName + ClpRewriter.ENCODED_VARS_COLUMN_SUFFIX);
       assertNotEquals(encodedVars, null);
-      long[] encodedVarsAsPrimitives = Arrays.stream(encodedVars).mapToLong(Long::longValue).toArray();
 
       MessageDecoder messageDecoder = new MessageDecoder(BuiltInVariableHandlingRuleVersions.VariablesSchemaV2,
           BuiltInVariableHandlingRuleVersions.VariableEncodingMethodsV1);
-      String decodedMessage = messageDecoder.decodeMessage(logtype, dictionaryVars, encodedVarsAsPrimitives);
+      String decodedMessage = messageDecoder.decodeMessage(logtype, dictionaryVars, encodedVars);
       assertEquals(expectedFieldValue, decodedMessage);
     } catch (ClassCastException e) {
       fail(e.getMessage(), e);
